@@ -215,15 +215,15 @@ Verified present:
 
 Caveats, in order of weight:
 
-1. **No `Dockerfile` and no `docker-compose.yml`.** The deploy surface does not
-   exist yet. Part 6's `nexcraft:nexcommon-go-docker-standards` step produces
-   them; until then this service cannot be built into an image.
+1. **No `Dockerfile` and no `docker-compose.yml`.** ~~The deploy surface does
+   not exist yet.~~ **Resolved in Part 6** — both now exist and the stack was
+   brought up end-to-end; see *Delivery guard (Part 6)*. The Part 5 score was
+   taken against the diff at that time and is left as recorded.
 2. **No CI workflow.** `.github/workflows/` is absent. Per the audit's own
    rubric a green CI is assumed by a "strong" score; there is none to be green.
 3. **`config/config.go:70` references `migrations/seed`, which does not
-   exist.** The comment describes a fixture that pre-populates the sandbox
-   Redis token. Nothing in the repo provides it, which is also why Part 6's
-   live-stack run needs a token seeded by hand.
+   exist.** ~~Nothing in the repo provides it.~~ **Resolved in Part 6** — the
+   fixture now exists at `migrations/seed/1_sandbox_seed.sql`.
 4. **`-race` could not run locally** (see Known limitations). CI should run the
    cap's concurrency test under the race detector.
 
@@ -281,3 +281,103 @@ argued in Deviations above.
   manual `/metrics` scrape confirming a 2xx and a 422 land on different labels —
   is covered by `TestScrapeSeparatesSuccessFromCapRejection`, and the live
   scrape is Part 6.
+
+### Delivery guard (Part 6)
+
+**Scope.** Packaging and API artifacts, plus a live end-to-end run of the whole
+service — not just the handler layer. Diff from the Part 5 checkpoint:
+
+| Path | What it is |
+|---|---|
+| `Dockerfile` | Multi-stage, `-mod=vendor`, non-root `app` user, `i18n/` copied into the runtime stage (the bundles are data, not compiled in). |
+| `docker-compose.yml` | Postgres 16 + Redis 7 + the app, both dependencies gated by `condition: service_healthy`. |
+| `migrations/seed/1_sandbox_seed.sql` | The fixture `config/config.go:70` points at; idempotent. |
+| `api/openapi.yaml` | OpenAPI 3.1, hand-authored (see the generator bug below). |
+| `postman/sandbox-svc.postman_collection.json` | Generated from the above. |
+| `postman/local.postman_environment.json` | `baseUrl` + `apiKey` + `item_id`. |
+| `postman/enrich-collection.js` | Deterministic post-processor re-applied after every regeneration. |
+
+**Two tool defects worked around, both recorded rather than hidden.**
+
+1. **The Swagger generator drops a route.** `NewHandleFuncParam` does
+   `SwaggerContainer.SwaggerPath[path] = make(...)` on every call, so two routes
+   sharing a path overwrite each other and only the last survives. `POST
+   /v1/favorites` is silently missing from the generated document. `api/openapi.yaml`
+   is therefore hand-authored and validated with `redocly lint` (*"Your API
+   description is valid"*, two intentional warnings: no license, localhost
+   server).
+2. **Postman's bearer helper cannot talk to this service.** `UserAccessValidator`
+   uses the *raw* `Authorization` value as the Redis key — it is not a JWT and is
+   never parsed. Postman's `http/bearer` auth prepends `"Bearer "`, which would
+   look up the wrong key and 401 every request. The security scheme is modelled
+   as `apiKey`-in-header instead, so the header is sent verbatim, with the reason
+   written into the spec.
+
+**The live run found a real bug — fixed, and the guard that missed it is now the
+guard that catches it.**
+
+An unauthenticated request returned:
+
+```json
+{"payload":{"status":401,"code":"E-1-CMD-AUT-001","message":"E-1-CMD-AUT-001"}}
+```
+
+The client received the raw error code as its message. `i18n/common/error/en-US.json`
+and `error/error.go`'s code list carried an **invented** `E-3-SBX-AUT-001`, while
+nexcommon actually emits `E-1-CMD-AUT-001` (`vendor/.../error/message.go:5`). The
+bundle-coverage guard passed because it only checked the codes in its own — wrong —
+list.
+
+Fixed on all three fronts:
+
+- The bundle now carries all 22 codes nexcommon's `error/message.go` can emit, plus
+  this service's own three and the formator's configured default.
+- `BundledCodes` no longer hand-lists nexcommon's codes at all.
+- `tests/bundle_coverage_test.go` gained `TestEveryNexcommonErrorCodeIsBundled`,
+  which **reads the codes out of the vendored `message.go`** and asserts each is
+  bundled — so the list cannot drift from the library again. Mutation-checked:
+  renaming `E-1-CMD-AUT-001` in the bundle makes it fail with
+  `missing key "E-1-CMD-AUT-001"`; restoring it passes.
+
+After the rebuild the same request returns `"message":"Unauthorized"`.
+
+**Live end-to-end results.** Built, `docker compose up`, all three containers
+healthy, migrations applied by the app on boot, Postgres seeded from the fixture,
+two Redis tokens seeded by hand (the fixture covers Postgres only) in the exact
+`AuthAccessTokenModel` JSON shape.
+
+| Check | TC | Result |
+|---|---|---|
+| Empty list is `{"favorites":[]}`, not `null` | TC-004 | 200, `[]` |
+| No token → 401 | TC-010 | 401, `E-1-CMD-AUT-001`, message `Unauthorized` |
+| Discontinued item still listed, `available:false` | TC-007 / REQ-004 | 200, item 3 present |
+| User 2 deleting user 1's row → uniform 404, row intact | TC-016 / REQ-008 | 404 `FAVORITE_NOT_FOUND`; user 1's row unchanged |
+| Add at 500 cap → clear 422, nothing inserted, nothing evicted | REQ-007 | 422 `FAVORITES_LIMIT_REACHED`; user 1's count 501 → 501, item 2 absent |
+| All three endpoints | TC-001…003 | Newman: 3 requests, 6 assertions, 0 failures |
+
+**The observability decision in `architecture.md` is verified live.** The doc
+mandated status-aware metrics and named this exact verification — a scrape
+showing a 2xx and a 422 on different labels:
+
+```
+my_app_http_hist_count{method="GET", path="/v1/favorites",  status="200"} 1
+my_app_http_hist_count{method="GET", path="/v1/favorites",  status="401"} 1
+my_app_http_hist_count{method="POST",path="/v1/favorites",  status="422"} 1
+my_app_http_hist_count{method="GET", path="/v1/health",     status="200"} 4
+```
+
+A 200 and a 422 land on different labels; the label is the route template, not an
+ID; `/metrics` does not count itself. No feature-specific dashboard or counter was
+invented.
+
+Stack brought down with `docker compose down`. The `18080:8080` host mapping is
+deliberate: this machine already has another stack on 8080, and the container port
+stays the service's real one.
+
+**Limitations, updated.**
+
+- **`-race` still cannot run locally** (no gcc on this machine), so the 500-cap
+  concurrency guarantee remains unit-tested but not race-detector-verified. CI
+  should run it under `-race`.
+- **No CI workflow** (`.github/workflows/` absent), unchanged from Part 5.
+- The Redis token fixture is still seeded by hand; the Postgres fixture now exists.

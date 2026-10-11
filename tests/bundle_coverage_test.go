@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"testing"
 
 	"github.com/william22913/sandbox-svc-code/constanta"
@@ -88,3 +89,29 @@ func TestEveryRuleNameKeyIsBundled(t *testing.T) {
 func TestEveryErrorCodeIsBundled(t *testing.T) {
 	assertKeysPresent(t, "common/error", svcerror.BundledCodes)
 }
+
+// TestEveryNexcommonErrorCodeIsBundled closes the hole the hand-maintained list
+// left open: this service ships its own error bundle in place of nexcommon's, so
+// every code nexcommon can emit must be present. The list is read out of the
+// vendored library rather than written down here, because the previous version
+// listed an invented E-3-SBX-AUT-001 while the real 401 rendered nexcommon's
+// E-1-CMD-AUT-001 as its own message — a gap the guard could not see.
+func TestEveryNexcommonErrorCodeIsBundled(t *testing.T) {
+	const messageGo = "../vendor/github.com/nexsoft-git/nexcommon/error/message.go"
+
+	raw, err := os.ReadFile(messageGo)
+	if err != nil {
+		t.Fatalf("reading %s: %v — the derived code list is the point of this test", messageGo, err)
+	}
+
+	codes := nexcommonErrorCodes.FindAllString(string(raw), -1)
+	if len(codes) < 20 {
+		t.Fatalf("found only %d codes in %s — the extraction regex has drifted from the library", len(codes), messageGo)
+	}
+
+	assertKeysPresent(t, "common/error", codes)
+}
+
+// nexcommonErrorCodes matches the E-<layer>-<DOMAIN>-<AREA>-<n> shape of every
+// sentinel in nexcommon's error package.
+var nexcommonErrorCodes = regexp.MustCompile(`E-[0-9]+-[A-Z]+-[A-Z]+-[0-9]+`)

@@ -52,23 +52,20 @@ var (
 	)
 )
 
-// BundledCodes is every error code this service's common.error bundle must
-// carry: its own business codes, plus the nexcommon codes reachable through the
-// shared validator path. The service ships its own i18n bundles in place of
-// nexcommon's, so a code missing here renders as the raw code string to the
-// client with no error and no log line pointing at the gap.
+// BundledCodes is the codes this service's common.error bundle must carry that
+// cannot be derived from nexcommon's source: its own business codes, plus the
+// formator's configured default for anything unexpected.
+//
+// The codes nexcommon itself emits (its 22 NewUnBundledErrorMessages sentinels,
+// including the auth family the token validators return) are NOT listed here —
+// they are read out of the vendored message.go by the bundle guard test, so
+// that list cannot drift from the library the way a hand-maintained one did.
 var BundledCodes = []string{
 	CodeFavoritesLimitReached,
 	CodeFavoriteNotFound,
 	CodeCatalogItemNotFound,
 
-	// Rendered by nexcommon's shared tag validator and body decode.
-	"E-4-CMD-DTO-001", // empty required field
-	"E-4-CMD-DTO-002", // failed format (incl. regex, date)
-	"E-4-CMD-DTO-003", // failed rule (min/max/enum)
-	"E-4-CMD-DTO-004", // unknown data
-	// The formator's own default code for anything unexpected.
+	// Set via .DefaultInternalCode(...) in server_config — nexcommon's own
+	// default is E-5-CMD-SRV-001, which this service overrides.
 	"E-5-SBX-SRV-001",
-	// Returned by the token validators.
-	"E-3-SBX-AUT-001",
 }

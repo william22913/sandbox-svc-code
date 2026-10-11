@@ -1,0 +1,62 @@
+# Local stack for the favorite-items feature (FEAT-001).
+#
+# Deliberately NOT publishing the Postgres or Redis ports to the host: they are
+# internal to this compose network and the service is what needs reaching. Use
+# `docker compose exec` to talk to them.
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: sandbox_svc
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # The seed fixture, for the manual seeding step documented in
+      # migrations/seed/1_sandbox_seed.sql. Not in initdb: these tables are
+      # created by the service's own migrator on startup, so seed data applied
+      # at initdb time would run before the tables exist.
+      - ./migrations/seed:/seed:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d sandbox_svc"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  redis:
+    image: redis:7-alpine
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  app:
+    build: .
+    environment:
+      # envconfig derives SANDBOX_SVC_<SECTION>_<FIELD> from config's structs;
+      # only the host names differ from the in-code defaults (localhost).
+      SANDBOX_SVC_POSTGRESQL_HOST: postgres
+      SANDBOX_SVC_REDIS_HOST: redis
+    ports:
+      # 18080 on the host, not 8080: this machine already has another stack
+      # listening on 8080. The container port stays the service's real one.
+      - "18080:8080"
+    depends_on:
+      # Both are required. Without service_healthy the app races Postgres and
+      # Redis on first boot and crashloops until it happens to win.
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      # /v1/health probes the real DB and Redis connections, so a green
+      # healthcheck means the dependencies are genuinely reachable.
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/v1/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+      start_period: 10s
+
+volumes:
+  postgres_data:
