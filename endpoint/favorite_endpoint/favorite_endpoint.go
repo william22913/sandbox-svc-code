@@ -13,38 +13,55 @@ import (
 
 	"github.com/william22913/sandbox-svc-code/constanta"
 	svcout "github.com/william22913/sandbox-svc-code/dto/out"
+	"github.com/william22913/sandbox-svc-code/router"
 	"github.com/william22913/sandbox-svc-code/services/favorite"
 )
 
-// Path is the collection these routes live under. The /v1 prefix matches
-// nexcommon's own route convention and this service's existing /v1/health —
-// architecture.md writes the paths unprefixed, which is shorthand for the
-// resource rather than a statement about versioning; see dev-test-results.md.
-const Path = "/v1/favorites"
+// Path is the collection these routes live under. architecture.md writes the
+// paths unprefixed, which reads as shorthand for the resource rather than a
+// statement about versioning; the /v1 prefix comes from router.V1PrefixPath,
+// the one place this service's API version is written down.
+const Path = router.V1PrefixPath + "/favorites"
 
 // MenuAddFavorite gates in.AddFavoriteRequest's required-field validation. The
 // menu name is the link between this route and that DTO, so the two move
 // together.
 const MenuAddFavorite = "favorite.create"
 
-// Register wires the three routes onto the shared controller. Called from the
-// composition root's InitEndpoint, which runs before GenerateSwaggerDocs.
-func Register(httpController *http_validator.HTTPController, service *favorite.Service) {
-	registerAdd(httpController, service)
-	registerRemove(httpController, service)
-	registerList(httpController, service)
+// FavoriteEndpoint owns this feature's routes. It is constructed in the
+// composition root and registered through nexcommon's endpoint aggregator.
+type FavoriteEndpoint struct {
+	httpValidator *http_validator.HTTPController
+	srv           *favorite.Service
+}
+
+func NewFavoriteEndpoint(
+	httpValidator *http_validator.HTTPController,
+	srv *favorite.Service,
+) *FavoriteEndpoint {
+	return &FavoriteEndpoint{httpValidator: httpValidator, srv: srv}
+}
+
+// RegisterEndpoint satisfies nexcommon's endpoint.HTTPEndpoint, which is what
+// lets the composition root collect it alongside every other entity's endpoint.
+// Must run before GenerateSwaggerDocs — the generator reads metadata that
+// registration accumulates.
+func (e *FavoriteEndpoint) RegisterEndpoint() {
+	e.registerAdd()
+	e.registerRemove()
+	e.registerList()
 }
 
 // POST /v1/favorites — REQ-001, REQ-005, REQ-007.
-func registerAdd(httpController *http_validator.HTTPController, service *favorite.Service) {
-	httpController.HandleFunc(
+func (e *FavoriteEndpoint) registerAdd() {
+	e.httpValidator.HandleFunc(
 		http_validator.NewHandleFuncParam(
 			Path,
-			httpController.WrapService(
+			e.httpValidator.WrapService(
 				http_validator.NewWarpServiceParam(
-					service,
-					service.Add,
-					httpController.UserAccessValidator(),
+					e.srv,
+					e.srv.Add,
+					e.httpValidator.UserAccessValidator(),
 				).
 					Menu(MenuAddFavorite).
 					Tags(constanta.TagFavorite).
@@ -58,15 +75,15 @@ func registerAdd(httpController *http_validator.HTTPController, service *favorit
 }
 
 // DELETE /v1/favorites/{item_id} — REQ-003, REQ-008.
-func registerRemove(httpController *http_validator.HTTPController, service *favorite.Service) {
-	httpController.HandleFunc(
+func (e *FavoriteEndpoint) registerRemove() {
+	e.httpValidator.HandleFunc(
 		http_validator.NewHandleFuncParam(
 			Path+"/{"+favorite.PathItemID+"}",
-			httpController.WrapService(
+			e.httpValidator.WrapService(
 				http_validator.NewWarpServiceParam(
-					service,
-					service.Remove,
-					httpController.UserAccessValidator(),
+					e.srv,
+					e.srv.Remove,
+					e.httpValidator.UserAccessValidator(),
 				).
 					// No body, so nothing may be read — without this nexcommon
 					// decodes the empty body and answers 400 before the service
@@ -90,15 +107,15 @@ func registerRemove(httpController *http_validator.HTTPController, service *favo
 // []model.SearchParam, none of which mean anything while sorting and filtering
 // are explicitly deferred. Registering it as a get-list would promise a
 // paginated, filterable endpoint this pass does not implement.
-func registerList(httpController *http_validator.HTTPController, service *favorite.Service) {
-	httpController.HandleFunc(
+func (e *FavoriteEndpoint) registerList() {
+	e.httpValidator.HandleFunc(
 		http_validator.NewHandleFuncParam(
 			Path,
-			httpController.WrapService(
+			e.httpValidator.WrapService(
 				http_validator.NewWarpServiceParam(
-					service,
-					service.List,
-					httpController.UserAccessValidator(),
+					e.srv,
+					e.srv.List,
+					e.httpValidator.UserAccessValidator(),
 				).
 					Tags(constanta.TagFavorite).
 					OperationID("listFavorites").

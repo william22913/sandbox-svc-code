@@ -21,7 +21,7 @@ import (
 	"github.com/nexsoft-git/nexcommon/util/validator/tag_validator"
 
 	"github.com/william22913/sandbox-svc-code/constanta"
-	"github.com/william22913/sandbox-svc-code/favorite_endpoint"
+	"github.com/william22913/sandbox-svc-code/endpoint/favorite_endpoint"
 	"github.com/william22913/sandbox-svc-code/services/favorite"
 )
 
@@ -40,7 +40,7 @@ func register() *mux.Router {
 	controller.Router(r)
 	controller.TagValidator(tag_validator.NewTagValidator())
 	controller.BasicValidator(basic_validator.BasicValidator{})
-	favorite_endpoint.Register(controller, favorite.NewService(nil))
+	favorite_endpoint.NewFavoriteEndpoint(controller, favorite.NewService(nil)).RegisterEndpoint()
 	return r
 }
 

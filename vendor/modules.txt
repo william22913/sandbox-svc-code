@@ -258,6 +258,7 @@ github.com/nexsoft-git/nexcommon/dto/in
 github.com/nexsoft-git/nexcommon/dto/out
 github.com/nexsoft-git/nexcommon/error
 github.com/nexsoft-git/nexcommon/http/client
+github.com/nexsoft-git/nexcommon/http/endpoint
 github.com/nexsoft-git/nexcommon/http/endpoint/health
 github.com/nexsoft-git/nexcommon/http/server/middleware
 github.com/nexsoft-git/nexcommon/idempotency
