@@ -117,7 +117,7 @@ with `cgo: C compiler "gcc" not found` and there is no other C compiler on
 the updated `golang-testing` standard now writes down: cgo on, `-mod=vendor`, the
 whole `./tests/...` tree, and `tests/db` against its real Postgres rather than a
 mock. It first ran on `golang:1.22`; after the bump to `v0.3.68-swagger` it runs
-on `golang:1.27`, which the module's `go 1.27` directive makes mandatory — 1.22
+on `golang:1.27.2-alpine`, which the module's `go 1.27` directive makes mandatory — 1.22
 refuses to build it at all. Every package is clean on both.
 
 ```
@@ -163,8 +163,8 @@ go: go.mod requires go >= 1.27 (running go 1.25.6; GOTOOLCHAIN=local)
 ```
 
 So 1.20 is the floor for **this** pin (`v0.3.67-swagger` declares `go 1.16`); any
-bump past `v0.3.68` needs 1.27. The images exist (`golang:1.27`,
-`golang:1.27-alpine`), and nothing here is broken by staying put — no shipped code
+bump past `v0.3.68` needs 1.27. The images exist (`golang:1.27.2`,
+`golang:1.27.2-alpine`), and nothing here is broken by staying put — no shipped code
 depends on a post-0.3.68 fix. Bumping would be cheap, though: the only goroutine
 closure in this repo is `tests/db/favorite_dao_test.go:366`, which already passes
 its loop variable as a parameter, so moving the directive from 1.19 to 1.27
@@ -172,7 +172,7 @@ changes no loop-variable semantics in this code.
 
 > **Resolved in the v0.3.68-swagger bump.** The directive now reads `go 1.27` and
 > the pin is `v0.3.68-swagger`, so the declaration and the real floor finally
-> agree; the Dockerfile builds from `golang:1.27-alpine`. The loop-variable
+> agree; the Dockerfile builds from the exact patch `golang:1.27.2-alpine`. The loop-variable
 > exposure predicted above was re-checked against the raised directive and is
 > still nil — the one closure passes its variable as a parameter. See the bump
 > section at the end of this document.
@@ -289,7 +289,7 @@ Caveats, in order of weight:
    exist.** ~~Nothing in the repo provides it.~~ **Resolved in Part 6** — the
    fixture now exists at `sql_migrations/seed/1_sandbox_seed.sql`.
 4. ~~**`-race` could not run locally.**~~ **Resolved in Part 7** — the whole
-   `./tests/...` tree, `tests/db` included, is race-clean; re-run on `golang:1.27`
+   `./tests/...` tree, `tests/db` included, is race-clean; re-run on `golang:1.27.2`
    after the library bump, since the raised directive makes 1.22 unusable.
 
 ### Spec compliance
@@ -445,7 +445,7 @@ stays the service's real one.
 
 - **`-race` now runs** (in a container, for want of a local gcc) — the full
   `./tests/...` tree including the DB-backed cap test is race-clean, on
-  `golang:1.27` since the library bump. `go.mod`'s `go 1.19` directive was the
+  `golang:1.27.2` since the library bump. `go.mod`'s `go 1.19` directive was the
   standing defect here; it now reads `go 1.27`, matching the bumped pin's floor.
 - **No CI workflow** (`.github/workflows/` absent), unchanged from Part 5.
 - The Redis token fixture is still seeded by hand; the Postgres fixture now exists.
@@ -778,26 +778,60 @@ code that changed, and it is the fix:
 `lrw := NewLoggingResponseWriter(w)` → `next.ServeHTTP(lrw, r)` →
 `strconv.Itoa(lrw.statusCode)`.
 
+**The pinned image was bumped, to an exact patch — not just noted as a mismatch.**
+The Dockerfile's build stage went `golang:1.23-alpine` → `golang:1.27.2-alpine`.
+That is a real change to the file, made in the same commit as the pin, so the image
+the repo builds from and the directive `go.mod` declares both say 1.27.
+
+Two things about the shape of this, recorded because it was raised as a
+two-file-sync concern and the answer is not the obvious one:
+
+- **There is no second place to sync in this repo.** `nexcommon-go-docker-standards`
+  contains no rule about a `bitbucket-pipelines.yml` `go-test` step or an
+  `EXACT_PATCH_VERSION` pin, and this repo has no CI file at all — no
+  `bitbucket-pipelines.yml`, no `.github/workflows/`. Its only YAML files are
+  `api/openapi.yaml` and `docker-compose.yml`, neither of which names a Go image.
+  So the Dockerfile is the single place the Go image is pinned; there was nothing
+  else to bump and nothing that could drift out of sync with it.
+- **nexcommon itself pins no image to match.** It ships no Dockerfile and no CI
+  config (it is a library), so "match the exact patch nexcommon builds against"
+  has no referent; what it declares is the `go 1.27` language directive in its
+  `go.mod`. `golang:1.27.2` is the exact patch the tree was actually built and
+  tested against here.
+
+The exact-patch pin is kept regardless, as a reproducibility improvement: a
+floating `golang:1.27-alpine` re-resolves on every CI build, so a future 1.27.x
+patch could change the compiler under a green build without any commit saying so.
+`go.mod`'s `go 1.27` directive is a floor, not a patch, so it does not pin this.
+
 **`golang-testing`'s `-race` example is `golang:1.22`, and it cannot run this tree
 any more.** A `go 1.27` directive is enforced, not advisory: 1.22 refuses to build
-the module at all. That is not a conflict to work around — the standard's example
-is an image, and the image has to be one that can build the module in front of it,
-which here is `golang:1.27`. The detector ran there, with cgo and the same
-`docker`-shim harness as Part 7 (no test file touched):
+the module at all — confirmed by running it, not assumed:
 
 ```
-ok  github.com/william22913/sandbox-svc-code/tests            1.069s
-ok  github.com/william22913/sandbox-svc-code/tests/db         8.426s
-ok  github.com/william22913/sandbox-svc-code/tests/dto        1.018s
-ok  github.com/william22913/sandbox-svc-code/tests/endpoint   1.054s
-ok  github.com/william22913/sandbox-svc-code/tests/middleware 1.042s
-ok  github.com/william22913/sandbox-svc-code/tests/service    1.015s
+go: go.mod requires go >= 1.27 (running go 1.22.12; GOTOOLCHAIN=local)
 ```
 
-**Verification on the bumped tree**, all in `golang:1.27-alpine` (the image the
-Dockerfile now builds from): `gofmt` clean, `go vet -mod=vendor ./...` and
-`go build -mod=vendor ./...` pass, `go test -mod=vendor ./...` green including
-`tests/db` against a real Postgres, and both standard scripts exit 0
+That is not a conflict to work around — the standard's example is an image, and the
+image has to be one that can build the module in front of it, which here is
+`golang:1.27.2`. The detector ran there, with cgo and the same `docker`-shim
+harness as Part 7 (no test file touched):
+
+```
+ok  github.com/william22913/sandbox-svc-code/tests            1.056s
+ok  github.com/william22913/sandbox-svc-code/tests/db         5.455s
+ok  github.com/william22913/sandbox-svc-code/tests/dto        1.017s
+ok  github.com/william22913/sandbox-svc-code/tests/endpoint   1.072s
+ok  github.com/william22913/sandbox-svc-code/tests/middleware 1.053s
+ok  github.com/william22913/sandbox-svc-code/tests/service    1.016s
+```
+
+**Verification on the bumped tree**, all in `golang:1.27.2` (the exact image the
+Dockerfile now builds from), in a real container rather than via a locally
+auto-fetched toolchain: `gofmt -l .` empty, `go build -mod=vendor ./...` and
+`go vet -mod=vendor ./...` both rc=0, `go test -mod=vendor ./...` green including
+`tests/db` against a real Postgres, `go test -mod=vendor -race ./...` green across
+the same six packages, and both standard scripts exit 0
 (`verify_generated_go_layout.py`, `verify_bundle_coverage.py` — the latter still
 reporting 26 registered codes against 6 `constanta` and 27 `error` keys).
 
