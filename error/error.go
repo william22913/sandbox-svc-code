@@ -11,6 +11,7 @@ import (
 const (
 	CodeFavoritesLimitReached = "FAVORITES_LIMIT_REACHED"
 	CodeFavoriteNotFound      = "FAVORITE_NOT_FOUND"
+	CodeCatalogItemNotFound   = "CATALOG_ITEM_NOT_FOUND"
 )
 
 // One typed sentinel per business failure. Returning one of these is the only
@@ -37,6 +38,18 @@ var (
 		stderrors.New(CodeFavoriteNotFound),
 		nil,
 	)
+
+	// ErrCatalogItemNotFound is a POST /favorites naming an item the catalog
+	// does not have. architecture.md's traceability table assigns this check to
+	// favorite_service.Add ("Read-only join in favorite_service.List/.Add (to
+	// validate item exists)"), so it is a real 404 rather than the foreign-key
+	// violation that would otherwise surface — and be flattened into a generic
+	// 500 — when the insert runs.
+	ErrCatalogItemNotFound = error2.NewUnBundledErrorMessages(
+		404,
+		stderrors.New(CodeCatalogItemNotFound),
+		nil,
+	)
 )
 
 // BundledCodes is every error code this service's common.error bundle must
@@ -47,6 +60,7 @@ var (
 var BundledCodes = []string{
 	CodeFavoritesLimitReached,
 	CodeFavoriteNotFound,
+	CodeCatalogItemNotFound,
 
 	// Rendered by nexcommon's shared tag validator and body decode.
 	"E-4-CMD-DTO-001", // empty required field

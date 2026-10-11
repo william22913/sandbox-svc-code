@@ -1,6 +1,7 @@
 {
   "FAVORITES_LIMIT_REACHED": "You have reached the maximum of 500 favorites. Remove one before adding another.",
   "FAVORITE_NOT_FOUND": "Favorite not found",
+  "CATALOG_ITEM_NOT_FOUND": "Item not found",
 
   "E-4-CMD-DTO-001": "Field {{.FieldName}} Cannot Empty",
   "E-4-CMD-DTO-002": "Invalid Format in Field {{.FieldName}}",
