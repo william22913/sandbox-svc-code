@@ -157,3 +157,127 @@ reverted.
 | Hardcode the metric status to 200 (nexcommon's own bug) | `TestScrapeSeparatesSuccessFromCapRejection` |
 | Label metrics by `r.URL.Path` instead of the route template | `TestRequestsWithNoMatchedRouteUseTheFixedLabel` |
 | Drop the fixed fallback metric label | `TestRequestsWithNoMatchedRouteUseTheFixedLabel` |
+
+## Delivery guard (Part 5)
+
+Run against this feature's diff only (`git diff origin/feat/FEAT-001...HEAD`,
+excluding `vendor/`): 38 files, ~4.9k lines. Commands: `go vet`, `go build
+-mod=vendor`, `go test -mod=vendor -count=1 ./tests/...` — all clean; six test
+packages pass.
+
+### SQL security gate
+
+**PASS — no blockers, no majors.** All seven DAO query sites bind every value
+with `$1`/`$2`; no value or identifier is ever interpolated into SQL text.
+DML/DDL reviewed: 2 migrations, `dao/favorite_dao.go`, the DAO tests, and the
+test-DB bootstrap.
+
+Two minor notes, both recorded rather than fixed:
+
+- `tests/testdb/testdb.go:33` — the test container's password is the Postgres
+  image's public default on an ephemeral loopback-only throwaway database. Not
+  a secret leak; left as-is deliberately. Optional hygiene only.
+- `migrations/main/2_favorite_items.sql` — the 500 cap has no schema
+  constraint, only the application-level lock-plus-count. Correct and the only
+  tractable design for a per-user row count, and safe because this DAO is the
+  sole writer of `favorite_items`.
+
+Specifically cleared as correct: the `FOR UPDATE` per-user lock that makes the
+count-then-insert check atomic; the EXISTS-before-COUNT ordering that keeps
+re-favoriting idempotent at the cap; and the single scoped
+`DELETE ... WHERE user_id = $1 AND item_id = $2`, which makes a cross-user
+delete impossible by construction rather than by a check (REQ-008).
+
+### Production-readiness gate
+
+**The gate named by the role prompt, `nexcraft:production-readiness-agent`,
+does not exist in the installed plugin** — `D:/code/my-local-code/vendor/nexcraft/agents/`
+has no such file. The plugin ships a `production-audit` *skill* instead, and
+that skill's lens was applied to this diff. Reported here plainly: the named
+agent did not run, something else did.
+
+**Score: 72/100 — launchable with caveats.** The code layer is sound; the
+score is held down entirely by packaging that Part 6 owns and has not produced
+yet, not by a code defect.
+
+Verified present:
+
+- Health check that proves dependency reachability: `/v1/health` via
+  nexcommon's `health.HealthEndpoint`.
+- `/metrics` scraped outside user-token validation, and status-aware — the
+  hardcoded-200 gap the architecture doc warned about is not present.
+- Migrations run forward and each has a `-- +migrate Down`, so there is a
+  rollback path.
+- Logger initialized as the literal first line of `config`'s `init()`, before
+  `envconfig.Process` — the silent-`log.Fatal` trap is avoided.
+- No secret or populated-config dump anywhere; the only startup log line names
+  `application` and `port`.
+
+Caveats, in order of weight:
+
+1. **No `Dockerfile` and no `docker-compose.yml`.** The deploy surface does not
+   exist yet. Part 6's `nexcraft:nexcommon-go-docker-standards` step produces
+   them; until then this service cannot be built into an image.
+2. **No CI workflow.** `.github/workflows/` is absent. Per the audit's own
+   rubric a green CI is assumed by a "strong" score; there is none to be green.
+3. **`config/config.go:70` references `migrations/seed`, which does not
+   exist.** The comment describes a fixture that pre-populates the sandbox
+   Redis token. Nothing in the repo provides it, which is also why Part 6's
+   live-stack run needs a token seeded by hand.
+4. **`-race` could not run locally** (see Known limitations). CI should run the
+   cap's concurrency test under the race detector.
+
+### Spec compliance
+
+Point-by-point against `spec.md` v3.
+
+| Spec item | Status | Where |
+|---|---|---|
+| REQ-001 favorite | met | `POST /v1/favorites` → `favorite.Service.Add` |
+| REQ-002 list | met | `GET /v1/favorites` → `favorite.Service.List` |
+| REQ-003 un-favorite | met | `DELETE /v1/favorites/{item_id}` → `favorite.Service.Remove` |
+| REQ-004 discontinued still listed, marked unavailable | met | `List` reads `catalog_items.is_available` live at list-time; no denormalized copy |
+| REQ-005 idempotent favorite | met | `INSERT ... ON CONFLICT (user_id, item_id) DO NOTHING`; the `AddAlreadyFavorited` outcome is a success |
+| REQ-006 anonymous cannot favorite | met (middleware) | `UserAccessValidator()` runs before every handler; the FE redirect is out of backend scope (see Test case feedback) |
+| REQ-007 500 cap, clear error, no silent fail/evict | met | `MaxFavoritesPerUser = 500`; 422 `FAVORITES_LIMIT_REACHED`; the transaction inserts nothing and evicts nothing |
+| REQ-008 uniform 404 on mismatch-or-missing | met by construction | one scoped query per read/write; the `dto/in` body carries no user field at all |
+| One-per-(user, item) | met | composite primary key, the real guarantee |
+| Max 500 per user | met | see REQ-007 |
+| Row-ownership on every read/write | met | user id read from `ctx.AuthAccessTokenModel.AuthenticationServerUserID`, never from the request |
+| Non-goals: no sharing, no recommendations | met | no such field or endpoint exists |
+| Deferred: sort/filter | respected | `GET /v1/favorites` takes no filter/order params; the DAO applies recency ordering only |
+| Dependency: catalog items (read-only) | met | `ItemExists` + the `List` join; no write path to `catalog_items` |
+| Dependency: auth/session (consumed) | met | user id comes from the token model; no session logic here |
+| External integrations: none | met | no network boundary added |
+
+No spec item is unmet. The four recorded deviations are spelling/shape
+differences (route prefix, the library's error-envelope field names, plain
+`WrapService` for the list, and the non-positive `item_id` → 404 choice), all
+argued in Deviations above.
+
+### Architecture compliance
+
+- **Components.** `favorite_endpoint`, the favorite service, and `favorite_dao`
+  all exist as the doc names them. The service and DAO packages are
+  `services/favorite` and `dao` rather than literals `favorite_service` /
+  `favorite_dao` — that is the house package layout, and the doc's names are
+  component names, not file paths.
+- **Authorization.** Every route is behind a validator; there is no
+  role/permission distinction beyond "logged in", exactly as the doc states, so
+  no `.Permisson(...)`/`.APIScope(...)` is set. No endpoint addresses a favorite
+  by anything but the caller's own `(user_id, item_id)`.
+- **Data design.** `favorite_items (user_id, item_id, created_at)`, composite
+  PK, no surrogate key, no soft-delete columns — matches `database.md`'s Batch 1
+  exactly, including its argued deviations from the house table convention.
+- **`spec_traceability`.** Every row of the table is answered by the
+  implementation. There is no row whose architectural answer is unimplemented.
+- **`## Observability`.** The doc's decision was "wire standard request metrics
+  once, and do not accept a status-blind wrapper." The implementation is
+  status-aware: `middleware/metrics.go` captures the real response status into
+  `my_app_http_hist` and labels by route template, and its behaviour is pinned
+  by `tests/middleware` including the negative cases (a 422 is not folded into
+  200; an unmatched request adds no series). No feature-specific dashboard or
+  counter was invented, as the guard requires. The doc's named verification — a
+  manual `/metrics` scrape confirming a 2xx and a 422 land on different labels —
+  is covered by `TestScrapeSeparatesSuccessFromCapRejection`, and the live
+  scrape is Part 6.
