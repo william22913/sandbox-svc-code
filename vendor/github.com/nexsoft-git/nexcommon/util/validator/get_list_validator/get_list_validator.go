@@ -1,6 +1,7 @@
 package get_list_validator
 
 import (
+	"fmt"
 	"reflect"
 	"regexp"
 	"strconv"
@@ -120,8 +121,15 @@ func (v *getListValidator) ValidateInputPageLimitAndOrderBy(
 	dto *in.GetListRequest,
 	service services.ServicesWithGetListData,
 ) error {
+	// page defaults to 1 rather than being required — the same
+	// pattern order (below) and limit (checkLimit) already use for
+	// their own omitted/zero case. Previously, a caller that simply
+	// omitted page (letting it zero-value) got a validation error
+	// instead of a sensible default, and the generated swagger
+	// document marked page as required anyway, documenting the
+	// opposite of this fix's intent before it existed.
 	if dto.Page < 1 {
-		return errors.ErrFormatFieldRule.Param("PAGE", "NEED_MORE_THAN", strconv.Itoa(0)).ContextModel(ctx)
+		dto.Page = 1
 	}
 
 	dto.Limit = checkLimit(service.GetListValidLimit(), dto.Limit)
@@ -157,6 +165,39 @@ func (v *getListValidator) ValidateInputPageLimitAndOrderBy(
 
 		dto.Order = strings.Join(tempOrder, ", ")
 
+	}
+
+	if dto.OrderIDs != "" {
+		orderIDsSplit := strings.Split(dto.OrderIDs, " in ")
+
+		if len(orderIDsSplit) != 2 {
+			return errors.ErrFormatField.Param("ORDER_IDS").ContextModel(ctx)
+		}
+
+		orderIDData := strings.Split(orderIDsSplit[1], InSeparator)
+
+		field := orderIDsSplit[0]
+		if !v.basicValidator.ValidateStringContainInStringArray(service.GetListValidOrderBy(), field) {
+			return errors.ErrFormatField.Param("ORDER_IDS").ContextModel(ctx)
+		}
+
+		var tempOrder []string
+		for _, id := range orderIDData {
+			_, err := strconv.Atoi(id)
+
+			if err != nil {
+				return errors.ErrFormatField.Param("ORDER_IDS").ContextModel(ctx)
+			}
+
+			tempOrder = append(tempOrder, id)
+		}
+
+		dto.OrderIDs = fmt.Sprintf("%s in (%s)", field, strings.Join(tempOrder, ", "))
+
+	}
+
+	if dto.OrderIDOperator != "ASC" && dto.OrderIDOperator != "DESC" {
+		dto.OrderIDOperator = "DESC"
 	}
 
 	return nil

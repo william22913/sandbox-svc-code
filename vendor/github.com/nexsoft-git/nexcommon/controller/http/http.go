@@ -26,6 +26,15 @@ import (
 	"gopkg.in/yaml.v2"
 )
 
+// DefaultMaxRequestBodyBytes is the cap NewHTTPController applies to
+// every request body unless MaxRequestBodySize overrides it. Request
+// bodies were previously read with no limit at all (io.ReadAll,
+// before any validation ran) — the caller decided how much memory
+// this process allocated per request, and concurrent requests
+// multiplied it. 10 MiB comfortably covers a normal JSON request body
+// while still bounding the worst case.
+const DefaultMaxRequestBodyBytes int64 = 10 << 20 // 10 MiB
+
 func NewHTTPController(
 	fixedToken string,
 ) *HTTPController {
@@ -34,6 +43,7 @@ func NewHTTPController(
 		version:             "1.0.0",
 		skipEndpointsLog:    []string{"/metrics"},
 		swaggerGenerator:    swagger.SwaggerGenerator{},
+		maxRequestBodyBytes: DefaultMaxRequestBodyBytes,
 	}
 
 	dtoConverter = &defaultNexsoftDTO{}
@@ -252,6 +262,15 @@ type HTTPController struct {
 	activityUtil        activity.ActivityUtil
 	externalAcivityUtil activity.ActivityUtil
 	swaggerView         swaggers
+	maxRequestBodyBytes int64
+}
+
+// MaxRequestBodySize overrides DefaultMaxRequestBodyBytes for this
+// controller. A value <= 0 means no limit — restoring the original,
+// unbounded behavior; set deliberately, not as an accidental default.
+func (g *HTTPController) MaxRequestBodySize(maxBytes int64) *HTTPController {
+	g.maxRequestBodyBytes = maxBytes
+	return g
 }
 
 func ModifyDTOResponse(

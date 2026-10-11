@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"encoding/json"
+	stderrors "errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -43,7 +44,7 @@ func (g HTTPController) getContext(
 	rCtx := r.Context().Value(constanta.ApplicationContextConstanta)
 	if rCtx == nil {
 
-		ctx = internalCtx.NewContextModel()
+		ctx = internalCtx.NewContextModel().WithBaseContext(r.Context())
 		context := context.WithValue(
 			r.Context(),
 			constanta.ApplicationContextConstanta,
@@ -66,6 +67,13 @@ func (g HTTPController) getContext(
 	ctx.ClientAccess.Logger.Source = srv.ReadHeader(r, constanta.SourceConstanta)
 	ctx.ClientAccess.Logger.Source = srv.ReadHeader(r, constanta.SourceConstanta)
 	ctx.ClientAccess.Logger.AccessToken = srv.ReadHeader(r, constanta.AuthorizationHeaderConstanta)
+	// See ClientAccess.RequestLocale's doc comment for why this lives
+	// here and not on AuthAccessTokenModel. The raw header value is
+	// passed through as-is (not reduced to a single tag) — go-i18n's
+	// own Localizer already calls language.ParseAcceptLanguage on
+	// whatever string it's given, which is built specifically to parse
+	// a full "en-US,en;q=0.9,id;q=0.8"-shaped Accept-Language value.
+	ctx.ClientAccess.RequestLocale = srv.ReadHeader(r, constanta.AcceptLanguageHeaderConstanta)
 
 	ctx.Server.IsSendSignature = sendSignature
 	ctx.Server.IsSignatureCheck = checkSignature
@@ -107,8 +115,18 @@ func (g HTTPController) readBody(
 
 		dto = param.service.GetDTO()
 
-		stringBody, ctx.ClientAccess.Logger.ByteIn, err = srv.ReadBody(request)
+		// nil ResponseWriter: this layer doesn't have the request's rw
+		// in scope, and ReadBodyWithLimit degrades gracefully without
+		// one (the cap itself still applies; only the "hint the server
+		// to close the connection" behavior is skipped). See
+		// MaxRequestBodySize's doc comment for how to change the cap;
+		// g.maxRequestBodyBytes <= 0 (never the default, only if
+		// explicitly set that way) restores the original unbounded read.
+		stringBody, ctx.ClientAccess.Logger.ByteIn, err = srv.ReadBodyWithLimit(nil, request, g.maxRequestBodyBytes)
 		if err != nil {
+			if stderrors.Is(err, srv.ErrBodyTooLarge) {
+				return nil, errors.ErrRequestBodyTooLarge
+			}
 			return nil, errors.ErrReadBody
 		}
 

@@ -56,10 +56,13 @@ var (
 // cannot be derived from nexcommon's source: its own business codes, plus the
 // formator's configured default for anything unexpected.
 //
-// The codes nexcommon itself emits (its 22 NewUnBundledErrorMessages sentinels,
-// including the auth family the token validators return) are NOT listed here —
-// they are read out of the vendored message.go by the bundle guard test, so
-// that list cannot drift from the library the way a hand-maintained one did.
+// The codes nexcommon itself emits (every NewUnBundledErrorMessages sentinel in
+// its message.go, including the auth family the token validators return) are NOT
+// listed here — they are read out of the vendored message.go by the bundle guard
+// test, so that list cannot drift from the library the way a hand-maintained one
+// did. It already earned that: bumping nexcommon to v0.3.67-swagger added
+// E-4-CMD-BDY-004 (413, oversized body) and the guard failed on the next run,
+// where a hand-written list would have shipped it as a raw code.
 var BundledCodes = []string{
 	CodeFavoritesLimitReached,
 	CodeFavoriteNotFound,

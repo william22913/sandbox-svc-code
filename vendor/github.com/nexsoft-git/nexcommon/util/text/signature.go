@@ -30,7 +30,7 @@ func GenerateMessageDigestCompact(
 		return "", err
 	}
 
-	return buffer.String(), nil
+	return CheckSumWithSha256(buffer.Bytes()), nil
 }
 
 func GenerateMessageDigest(

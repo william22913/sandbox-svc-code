@@ -128,6 +128,12 @@ and tagged correctly; it is the generated document that loses it. Pinned by
 `TestCollectionPathDocumentsOnlyOneMethod`, which fails once the library is
 fixed. The OpenAPI artifact is hand-corrected in Part 6.
 
+> **Resolved in the v0.3.67-swagger bump.** `NewHandleFuncParam` now guards the
+> assignment (`if SwaggerPath[path] == nil`, `param.go:21`), so the write is
+> additive and both operations survive. That test was replaced by
+> `TestCollectionPathDocumentsEveryMethod`, which asserts both — see the bump
+> section at the end of this document.
+
 **404s are not measured.** gorilla/mux applies middleware only after a route
 matches, so an unmatched request never reaches the metrics middleware and
 produces no metric at all. The request histogram measures handled traffic and
@@ -292,20 +298,22 @@ service — not just the handler layer. Diff from the Part 5 checkpoint:
 | `Dockerfile` | Multi-stage, `-mod=vendor`, non-root `app` user, `i18n/` copied into the runtime stage (the bundles are data, not compiled in). |
 | `docker-compose.yml` | Postgres 16 + Redis 7 + the app, both dependencies gated by `condition: service_healthy`. |
 | `sql_migrations/seed/1_sandbox_seed.sql` | The fixture `config/config.go:70` points at; idempotent. |
-| `api/openapi.yaml` | OpenAPI 3.1, hand-authored (see the generator bug below). |
+| `api/openapi.yaml` | OpenAPI 3.1, hand-authored. Its hand-correction was compensating for a library bug that v0.3.67-swagger fixed (see below), so it is no longer load-bearing — the artifact is simply ours now. |
 | `postman/sandbox-svc.postman_collection.json` | Generated from the above. |
 | `postman/local.postman_environment.json` | `baseUrl` + `apiKey` + `item_id`. |
 | `postman/enrich-collection.js` | Deterministic post-processor re-applied after every regeneration. |
 
 **Two tool defects worked around, both recorded rather than hidden.**
 
-1. **The Swagger generator drops a route.** `NewHandleFuncParam` does
+1. **~~The Swagger generator drops a route.~~ Fixed upstream in v0.3.67-swagger.**
+   Under v0.3.57-swagger-alpha, `NewHandleFuncParam` did
    `SwaggerContainer.SwaggerPath[path] = make(...)` on every call, so two routes
-   sharing a path overwrite each other and only the last survives. `POST
-   /v1/favorites` is silently missing from the generated document. `api/openapi.yaml`
-   is therefore hand-authored and validated with `redocly lint` (*"Your API
-   description is valid"*, two intentional warnings: no license, localhost
-   server).
+   sharing a path overwrote each other and only the last survived; `POST
+   /v1/favorites` was silently missing from the generated document, and
+   `api/openapi.yaml` was hand-authored to put it back (validated with
+   `redocly lint` — *"Your API description is valid"*, two intentional warnings:
+   no license, localhost server). The v0.3.67 bump resolved it: the assignment is
+   now guarded and both operations are generated.
 2. **Postman's bearer helper cannot talk to this service.** `UserAccessValidator`
    uses the *raw* `Authorization` value as the Redis key — it is not a JWT and is
    never parsed. Postman's `http/bearer` auth prepends `"Bearer "`, which would
@@ -414,32 +422,36 @@ symbols, no import changes.
 Re-run: **OK — 28 generated files, no misplaced endpoint files, no leaked
 template artifacts.**
 
-### `verify_bundle_coverage.py` — cannot run against the pinned nexcommon
+### `verify_bundle_coverage.py` — could not run on the old pin; the bump fixed that
+
+On the first attempt the script could not run at all:
 
 ```
 ERROR: `go run` failed while collecting registered codes ...
 .\tmp..._verify_bundle_coverage_check.go:11:27: undefined: nexerr.AllCodes
 ```
 
-The script derives the required code set from `error.AllCodes()`, a function
-added to nexcommon *for this purpose*. The pinned `v0.3.57-swagger-alpha` predates
-it — the vendored `error` package exports only `NewErrorFormator`,
-`NewUnBundledErrorMessages` and `NewErrorMessageParam`. The script therefore
-exits 2 before it can check anything; wiring it up would need a nexcommon bump,
-which is a dependency decision outside this feature's code.
+It derives the required code set from `error.AllCodes()`, a function added to
+nexcommon *for this purpose*, and the pinned `v0.3.57-swagger-alpha` predates it —
+that version's `error` package exports only `NewErrorFormator`,
+`NewUnBundledErrorMessages` and `NewErrorMessageParam`. Bumping to
+`v0.3.67-swagger` (see the bump section below) made the script runnable, and it
+immediately found a real gap — `E-4-CMD-BDY-004`, new in that version — which was
+fixed. It now reports:
 
-The equivalent coverage is held locally by the guard tests, which together cover
-exactly the two halves `AllCodes()` would return:
+```
+Checked 26 registered code(s) (nexcommon + .../error) against:
+  common.constanta (6 keys), common.error (27 keys).
+OK - every registered code has a bundle entry.
+```
 
-| Source | Mechanism | Count |
-|---|---|---|
-| nexcommon's own sentinels | `TestEveryNexcommonErrorCodeIsBundled` derives codes from the vendored `error/message.go` by regex | 22 |
-| this service's sentinels + the formator default | `TestEveryErrorCodeIsBundled` walks `error.BundledCodes` | 4 |
-
-All four pass; the bundle carries 26 keys. The derivation is deliberately from
-the vendored source rather than a hand-written list, which is the same property
-`AllCodes()` gives the script — see the Part 6 entry above for the bug that
-proved why.
+The local guard tests covered the same ground while the script could not run —
+`TestEveryNexcommonErrorCodeIsBundled` derives nexcommon's codes from the
+vendored `error/message.go`, `TestEveryErrorCodeIsBundled` walks this service's
+own. The derivation from the vendored source rather than a hand-written list is
+the same property `AllCodes()` gives the script, and it is what caught
+`E-4-CMD-BDY-004` the moment the library changed — see the Part 6 entry above for
+the bug that proved why.
 
 ### `detect_go_project_layout.py` — reconnaissance, two real gaps closed
 
@@ -471,3 +483,72 @@ this pass could act on, and two that are its own gaps:
 `go test -mod=vendor ./tests/...` all green, including `tests/db` (7.6s against a
 real Postgres — which also re-verifies the renamed migration path the test helper
 globs).
+
+## nexcommon bump to v0.3.67-swagger
+
+Done so `verify_bundle_coverage.py` could run (it needs `error.AllCodes()`), and
+because a hand-derived code list only stays honest if the library under it is
+current. `go.mod`: `nexcommon v0.3.57-swagger-alpha → v0.3.67-swagger`. That
+pulled `nexlogger v0.0.13 → v0.0.18` (nexcommon's own requirement) and added
+`github.com/robfig/cron v1.2.0` as an indirect dependency (nexlogger 0.0.18 ships
+a scheduler). `v0.3.67-swagger` was chosen because it is the only cached version
+carrying **both** `error.AllCodes()` and the swagger wiring this service needs —
+every other candidate had one or the other.
+
+Rebuild was clean, but two things the newer library changed had to be handled,
+both real:
+
+**1. A new error code the bundle did not carry.** `AllCodes()` reports
+`E-4-CMD-BDY-004` — `ErrRequestBodyTooLarge` (413), added by nexcommon's new
+request-body cap. The guard test failed on the next run with
+`missing key "E-4-CMD-BDY-004"` before the script was even consulted, which is
+exactly what deriving the list from the vendored source is for. Added it. Reading
+the real definitions also exposed three **mislabeled** siblings already in the
+bundle — `E-4-CMD-BDY-002` is `ErrMarshalingBody`, not "too large", and
+`E-4-CMD-BDY-003` is `ErrInvalidSignature`, not "not supported"; `E-4-CMD-BDY-001`
+is `ErrReadBody`. All four now say what they mean.
+
+**2. The swagger generator no longer drops a route.** `NewHandleFuncParam` now
+guards its map assignment (`if SwaggerPath[path] == nil`), so `POST /v1/favorites`
+survives alongside `GET`. `TestCollectionPathDocumentsOnlyOneMethod` — which
+existed to fail once this was fixed — was replaced by
+`TestCollectionPathDocumentsEveryMethod`, asserting both. This is the one library
+defect this feature had been working around, and it is gone.
+
+**Not changed: nexcommon's metrics middleware still hardcodes the status.** The
+inspected `http/server/middleware/middleware.go:48` still sets `statusCode := 200`
+before observing the histogram, so a 404 or 401 would be labeled 200. This
+service's own status-aware middleware remains the correct wiring and was left as
+is (see `nexcommon-go-prometheus-standards`, which names exactly this case).
+
+**Verification on the bumped library.** Full guard green: `gofmt` clean, `vet` and
+build pass, `go test -mod=vendor ./tests/...` all green including `tests/db`
+against a real Postgres, and both standard scripts (`verify_generated_go_layout.py`,
+`verify_bundle_coverage.py`) exit 0.
+
+Live, against the rebuilt image — health green, migrations applied, two Redis
+tokens seeded, and the whole feature exercised end to end:
+
+| Check | Result |
+|---|---|
+| No token → 401 | `E-1-CMD-AUT-001`, message `Unauthorized` |
+| Empty list | `{"favorites":[]}`, not `null` |
+| Add item 1 | 200, `already_favorited:false` |
+| Add a catalog item that does not exist | 404 `CATALOG_ITEM_NOT_FOUND`, `Item not found` |
+| List | item 1 present with its catalog name and `available:true` |
+| Another user deletes that row | 404 `FAVORITE_NOT_FOUND`, uniform |
+| Owner deletes it | 200; list empty again |
+
+`/metrics` on the bumped build still labels by route template with the real
+status — `200`, `401` and `404` on distinct labels, `/metrics` absent from them:
+
+```
+my_app_http_hist_count{method="DELETE",path="/v1/favorites/{item_id}",status="200"} 1
+my_app_http_hist_count{method="DELETE",path="/v1/favorites/{item_id}",status="404"} 1
+my_app_http_hist_count{method="GET",path="/v1/favorites",status="200"} 3
+my_app_http_hist_count{method="GET",path="/v1/favorites",status="401"} 1
+my_app_http_hist_count{method="POST",path="/v1/favorites",status="404"} 1
+```
+
+Vendor grew by 14 files (2806 → 2820), still ~37 MB — the two versions are close,
+so the bump is a small delta rather than a re-vendor of the world.

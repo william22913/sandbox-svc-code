@@ -5,6 +5,9 @@ import (
 	"fmt"
 	"net"
 	"net/smtp"
+	"reflect"
+	"regexp"
+	"runtime/debug"
 	"strings"
 	"time"
 
@@ -30,17 +33,94 @@ func (e *EmailUtility) Timeout(duration time.Duration) *EmailUtility {
 	return e
 }
 
+func (e *EmailUtility) CompleteEmail(
+	param interface{},
+	message string,
+) string {
+
+	if param == nil || message == "" {
+		return message
+	}
+
+	v := reflect.ValueOf(param)
+	if v.Kind() == reflect.Ptr {
+		if v.IsNil() {
+			return message
+		}
+		v = v.Elem()
+	}
+	if v.Kind() != reflect.Struct {
+		return message
+	}
+
+	return replaceFromStructTags(v, message)
+
+}
+
+func replaceFromStructTags(v reflect.Value, message string) string {
+	t := v.Type()
+
+	for i := 0; i < t.NumField(); i++ {
+		sf := t.Field(i)
+		tag := sf.Tag.Get("field")
+		fv := v.Field(i)
+
+		if fv.Kind() == reflect.Ptr && !fv.IsNil() {
+			elem := fv.Elem()
+			if elem.IsValid() && elem.Kind() == reflect.Struct && elem.Type().PkgPath() != "time" {
+				message = replaceFromStructTags(elem, message)
+			}
+		} else if fv.Kind() == reflect.Struct && fv.Type().PkgPath() != "time" {
+			message = replaceFromStructTags(fv, message)
+		}
+
+		if tag == "" {
+			continue
+		}
+
+		valStr := valueToString(fv)
+
+		pat := fmt.Sprintf(`\{\{\s*\.%s\s*\}\}`, regexp.QuoteMeta(tag))
+		re := regexp.MustCompile(pat)
+		message = re.ReplaceAllString(message, valStr)
+	}
+
+	return message
+}
+
+func valueToString(v reflect.Value) string {
+	if !v.IsValid() {
+		return ""
+	}
+
+	for v.Kind() == reflect.Ptr {
+		if v.IsNil() {
+			return ""
+		}
+		v = v.Elem()
+	}
+	if v.CanInterface() {
+		return fmt.Sprint(v.Interface())
+	}
+
+	return fmt.Sprint(v)
+}
+
+type EmailUtilityParam struct {
+	Host     string
+	Port     int
+	Email    string
+	Password string
+}
+
 func NewEmailUtility(
-	host string,
-	port int,
-	email string,
-	password string,
+	param EmailUtilityParam,
 ) *EmailUtility {
 	return &EmailUtility{
-		host:     host,
-		port:     port,
-		email:    email,
-		password: password,
+		host:     param.Host,
+		port:     param.Port,
+		email:    param.Email,
+		password: param.Password,
 		timeout:  1 * time.Minute,
 	}
 }
@@ -100,8 +180,9 @@ func (s *emailBuilder) send() {
 		if r := recover(); r != nil {
 			log.Error().
 				Caller().
-				Stack().
-				Msg("Panic Found when send email message")
+				Interface("panic", r).
+				Str("stack", string(debug.Stack())).
+				Msg("Panic recovered")
 		}
 	}()
 
@@ -123,13 +204,13 @@ func (s *emailBuilder) send() {
 	headers["Subject"] = subj
 	headers["Date"] = time.Now().Format(time.RFC1123Z)
 
-	if s.isHTMLType {
-		headers["mime"] = "MIME-version: 1.0;\nContent-Type: text/html; charset=\"UTF-8\";\n\n"
-	}
-
 	content := ""
 	for k, v := range headers {
 		content += fmt.Sprintf("%s: %s\r\n", k, v)
+	}
+
+	if s.isHTMLType {
+		content += "mime: MIME-version: 1.0;\nContent-Type: text/html; charset=\"UTF-8\";\n\n"
 	}
 
 	content += "\r\n" + s.message

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"runtime/debug"
 	"sort"
 	"strings"
 	"time"
@@ -331,11 +332,11 @@ func (d *dbShard) combineData(
 
 	defer func() {
 		if r := recover(); r != nil {
-			fmt.Println(r)
 			log.Error().
 				Caller().
-				Stack().
-				Msg("Panic Error When Combining Data from Shard db")
+				Interface("panic", r).
+				Str("stack", string(debug.Stack())).
+				Msg("Panic recovered")
 		}
 	}()
 

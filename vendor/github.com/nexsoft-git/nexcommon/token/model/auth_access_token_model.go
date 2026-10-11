@@ -29,5 +29,7 @@ type RedisAuthAccessTokenModel struct {
 	AliasName      string                 `json:"als"`
 	ClientAlias    string                 `json:"cls"`
 	GrochatAccount string                 `json:"gca"`
+	Schema         string                 `json:"sch"`
+	DBName         string                 `json:"dbn"`
 	Other          map[string]interface{} `json:"oth"`
 }

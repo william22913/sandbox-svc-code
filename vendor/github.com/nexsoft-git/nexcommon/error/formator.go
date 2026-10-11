@@ -87,7 +87,17 @@ func (f formator) ReformatErrorMessage(
 	}
 
 	if param.ctx != nil {
-		language = param.ctx.AuthAccessTokenModel.Locale
+		// RequestLocale (Accept-Language, per request) wins over
+		// AuthAccessTokenModel.Locale (whatever was baked into the
+		// token at login) when the caller actually sent one — see
+		// ClientAccess.RequestLocale's own doc comment. Falling back
+		// to the token's locale preserves exactly the existing
+		// behavior for a caller that never sends the header.
+		if param.ctx.ClientAccess.RequestLocale != "" {
+			language = param.ctx.ClientAccess.RequestLocale
+		} else {
+			language = param.ctx.AuthAccessTokenModel.Locale
+		}
 		result.DefaultMessage.Header.RequestID = param.ctx.ClientAccess.Logger.RequestID
 	}
 

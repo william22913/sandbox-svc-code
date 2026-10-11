@@ -2,6 +2,7 @@ package token
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/go-redis/redis/v7"
@@ -94,6 +95,12 @@ type UserJWTValidator interface {
 		jwtToken model.PayloadJWTToken,
 		err error,
 	)
+
+	SetAdditionalRedisValueParser(
+		additional interface{},
+	)
+
+	GetAdditionalRedisValueParser() interface{}
 }
 
 type ExternalJWTValidator interface {
@@ -149,8 +156,15 @@ func NewExternalJWTValidator(
 	clientID string,
 	authUserID int64,
 	resourceID string,
+	prefixAuthUrl string,
 ) ExternalJWTValidator {
 	defaultURL := "/v1/internal/clients/%s"
+
+	if prefixAuthUrl != "" {
+		prefixAuthUrl = strings.Trim(prefixAuthUrl, "/")
+		defaultURL = "/v1/" + prefixAuthUrl + "/internal/clients/%s"
+	}
+
 	return &externalUserJWTValidator{
 		dao: externalDAO,
 		authURL: authDestination{
@@ -171,7 +185,7 @@ func NewJWTTokenValidator(
 	apiConnector client.APIConnector,
 	client *redis.Client,
 ) UserJWTValidator {
-	return userJWTValidator{
+	return &userJWTValidator{
 		nexsoftJWT: nexsoftJWT{
 			config:         config,
 			basicValidator: basicValidator,

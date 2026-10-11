@@ -46,6 +46,7 @@ type DBQueueModel struct {
 	ID                sql.NullInt64
 	MessageID         sql.NullString
 	IncomingMessageID sql.NullString
+	UniqueIdentifier  sql.NullString
 	AckTopic          sql.NullString
 	QueueType         sql.NullString
 	Payload           sql.NullString

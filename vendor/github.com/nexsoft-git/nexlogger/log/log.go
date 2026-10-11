@@ -5,12 +5,25 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"os"
 
 	"github.com/nexsoft-git/nexlogger"
 )
 
-// Logger is the global logger.
+// Logger is the global logger. Defaulted to stderr by this package's
+// own init() below, so logging works out of the box for any consumer
+// that never calls InitiateLogger at all — previously, the zero value
+// of nexlogger.Logger discarded every write silently, including a
+// Fatal() call's message right before the process exits, which turned
+// a clear startup error (e.g. a bad config) into an unexplained exit
+// with no output anywhere. Call InitiateLogger yourself to override
+// this default with a different writer/level/sampler — it simply
+// overwrites this package-level var, same as before.
 var Logger nexlogger.Logger
+
+func init() {
+	Logger = nexlogger.New(os.Stderr)
+}
 
 func InitiateLogger(log nexlogger.Logger) {
 	Logger = log

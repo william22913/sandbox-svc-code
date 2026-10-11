@@ -41,11 +41,25 @@ type UnbundledErrorMessages struct {
 	ctx      *context.ContextModel
 }
 
+// ContextModel, Reason and Param are builder methods meant to be
+// called on a package-level sentinel var shared by every request that
+// can return this error (the documented usage pattern — see
+// NewUnBundledErrorMessages). A sentinel is declared once and reused
+// forever, so mutating the receiver in place here would mean two
+// concurrent requests writing to the SAME struct's fields — one
+// request's .Param(...)/.ContextModel(...)/.Reason(...) call could
+// overwrite or interleave with another's, surfacing one request's
+// field names, locale/request-id context, or reason text in a
+// different request's response. Each of these three methods instead
+// returns a shallow copy with only its own field changed, leaving the
+// shared sentinel itself untouched — safe to call concurrently from
+// any number of goroutines on the same package-level var.
 func (u *UnbundledErrorMessages) ContextModel(
 	ctx *context.ContextModel,
 ) *UnbundledErrorMessages {
-	u.ctx = ctx
-	return u
+	clone := *u
+	clone.ctx = ctx
+	return &clone
 }
 
 func (e UnbundledErrorMessages) Error() string {
@@ -60,7 +74,13 @@ func (e UnbundledErrorMessages) Error() string {
 			tempParam := e.function(e.param...)
 
 			if e.ctx != nil {
-				if e.ctx.AuthAccessTokenModel.Locale != "" {
+				// RequestLocale (Accept-Language) wins over the
+				// token's own Locale when sent — same precedence as
+				// formator.go's ReformatErrorMessage; see
+				// ClientAccess.RequestLocale's doc comment.
+				if e.ctx.ClientAccess.RequestLocale != "" {
+					language = e.ctx.ClientAccess.RequestLocale
+				} else if e.ctx.AuthAccessTokenModel.Locale != "" {
 					language = e.ctx.AuthAccessTokenModel.Locale
 				}
 			}
@@ -86,11 +106,13 @@ func (e UnbundledErrorMessages) Error() string {
 }
 
 func (e *UnbundledErrorMessages) Reason(reason string) *UnbundledErrorMessages {
-	e.reason = reason
-	return e
+	clone := *e
+	clone.reason = reason
+	return &clone
 }
 
 func (e *UnbundledErrorMessages) Param(param ...interface{}) *UnbundledErrorMessages {
-	e.param = param
-	return e
+	clone := *e
+	clone.param = param
+	return &clone
 }

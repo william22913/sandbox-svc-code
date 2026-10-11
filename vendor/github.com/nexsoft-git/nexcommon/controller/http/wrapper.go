@@ -3,10 +3,12 @@ package http
 import (
 	"database/sql"
 	"encoding/json"
+	stderrors "errors"
 	"fmt"
 	"io"
 	"os"
 	"reflect"
+	"runtime/debug"
 	"time"
 
 	"net/http"
@@ -32,6 +34,42 @@ import (
 type WrapperServiceResult struct {
 	f  func(http.ResponseWriter, *http.Request)
 	cs swagger.SwaggerControllerService
+}
+
+// writePanicRecoveryResponse writes a minimal, hardcoded 500 in the
+// service's normal {success, header, payload} envelope shape after a
+// panic has already been recovered and logged. Before this existed,
+// the recover() branches below logged the panic but wrote nothing to
+// rw at all — the handler then returned with no response ever sent,
+// so the client held the connection open until the server's own
+// ReadTimeout/WriteTimeout (or indefinitely, on a service that never
+// set one), and whatever status eventually resulted was never an
+// intentional 500 in this service's own response shape.
+//
+// Deliberately NOT the normal ctx/g.formator-based response path used
+// everywhere else in this file: the panic may have happened before
+// ctx was even constructed, or before the request made it far enough
+// for g.formator to be safely usable, and calling into that path from
+// inside an already-recovering deferred func risks a second panic
+// that Go will NOT recover from (a panic inside a deferred function
+// that already called recover() is not itself recoverable by that
+// same defer). Every value written here is a static literal for
+// exactly that reason.
+//
+// Known, accepted gap: if the panic happens AFTER this request's
+// response headers were already written (e.g. mid-body-write), this
+// call becomes a harmless "superfluous WriteHeader" no-op for the
+// status, but the body write below still appends after whatever
+// bytes already went out, which can produce a malformed response body
+// in that specific case. That's a pre-existing limitation of
+// recovering after headers are sent, not something this change
+// introduces — the alternative (silence, the prior behavior) is
+// strictly worse for the overwhelmingly common case: a panic before
+// any bytes were written at all.
+func writePanicRecoveryResponse(rw http.ResponseWriter) {
+	rw.Header().Set("Content-Type", "application/json")
+	rw.WriteHeader(http.StatusInternalServerError)
+	_, _ = rw.Write([]byte(`{"success":false,"payload":{"status":500,"code":"E-5-CMD-SRV-001","message":"Internal Server Error"}}`))
 }
 
 func (g HTTPController) WrapService(
@@ -95,13 +133,8 @@ func (g HTTPController) WrapService(
 	//Path Request
 	for i := 0; i < len(param.pathParams); i++ {
 		name := param.pathParams[i]
-		min := 0
 
-		dataType := "string"
-		if name != "uuid" && strings.Contains(strings.ToLower(name), "id") {
-			dataType = "integer"
-			min = 1
-		}
+		dataType, min := resolvePathParamSwaggerType(name, param.pathParamTypes)
 
 		example := ""
 		if min != 0 {
@@ -153,7 +186,12 @@ func (g HTTPController) WrapService(
 
 			defer func() {
 				if rcr := recover(); rcr != nil {
-					log.Error().Caller().Msgf("Panic Recovered: %v", rcr)
+					log.Error().
+						Caller().
+						Interface("panic", rcr).
+						Str("stack", string(debug.Stack())).
+						Msg("Panic recovered")
+					writePanicRecoveryResponse(rw)
 				} else {
 					if param.isIdempotency {
 						payload, header, err = g.doFinishIdempotencyProcess(
@@ -468,13 +506,8 @@ func (g HTTPController) wrapServiceListData(
 	//Path Request
 	for i := 0; i < len(param.pathParams); i++ {
 		name := param.pathParams[i]
-		min := 0
 
-		dataType := "string"
-		if name != "uuid" && strings.Contains(strings.ToLower(name), "id") {
-			dataType = "integer"
-			min = 1
-		}
+		dataType, min := resolvePathParamSwaggerType(name, param.pathParamTypes)
 
 		example := ""
 		if min != 0 {
@@ -495,6 +528,17 @@ func (g HTTPController) wrapServiceListData(
 	}
 
 	//GET LIST PARAM
+	// Part 1 item 12 (second half, swagger-branch-only): page, limit,
+	// filter, order, and connector were all documented as Required:
+	// true here, despite every one of them being genuinely optional —
+	// page now defaults to 1 (ValidateInputPageLimitAndOrderBy), limit
+	// defaults via checkLimit, order defaults to
+	// param.defaultOrder/GetListValidOrderBy()[0], connector defaults
+	// to "AND" below, and filter has no default because omitting it
+	// just means "no filtering" (not an error). A generated client
+	// that took this document at face value would send all five on
+	// every request for no reason, and would have no way to know
+	// omitting any of them is actually fine.
 	if !count {
 		description := fmt.Sprintf("min = %d", 1)
 		swaggerParam = append(
@@ -503,7 +547,7 @@ func (g HTTPController) wrapServiceListData(
 				In:          "query",
 				Name:        "page",
 				Description: description,
-				Required:    true,
+				Required:    false,
 				Schema: swagger.SwaggerSchema{
 					Type:    "integer",
 					Example: "1",
@@ -516,7 +560,7 @@ func (g HTTPController) wrapServiceListData(
 			swagger.SwaggerParametersWithoutReferences{
 				In:       "query",
 				Name:     "limit",
-				Required: true,
+				Required: false,
 				Schema: swagger.SwaggerSchema{
 					Type:    "integer",
 					Example: fmt.Sprintf("%d", param.service.GetListValidLimit()[0]),
@@ -530,7 +574,7 @@ func (g HTTPController) wrapServiceListData(
 			swagger.SwaggerParametersWithoutReferences{
 				In:       "query",
 				Name:     "filter",
-				Required: true,
+				Required: false,
 				Schema: swagger.SwaggerSchema{
 					Type:    "string",
 					Example: "name||description&&title in rizky-test-test2, price&&qty in 10-30-50, qty eq 100, created_at rng 2020-01-01T00:00:00Z>>2021-01-01T00:00:00Z",
@@ -543,7 +587,7 @@ func (g HTTPController) wrapServiceListData(
 			swagger.SwaggerParametersWithoutReferences{
 				In:          "query",
 				Name:        "order",
-				Required:    true,
+				Required:    false,
 				Description: "Order List Result, if only fill by field name, will order on ASC mode",
 				Schema: swagger.SwaggerSchema{
 					Type:    "string",
@@ -557,7 +601,7 @@ func (g HTTPController) wrapServiceListData(
 			swagger.SwaggerParametersWithoutReferences{
 				In:          "query",
 				Name:        "connector",
-				Required:    true,
+				Required:    false,
 				Description: "Connector for every filter, Default = AND",
 				Schema: swagger.SwaggerSchema{
 					Type:    "string",
@@ -585,7 +629,11 @@ func (g HTTPController) wrapServiceListData(
 
 			defer func() {
 				if rcr := recover(); rcr != nil {
-					log.Error().Caller().Msgf("Panic Recovered: %v", rcr)
+					log.Error().Caller().
+						Interface("panic", rcr).
+						Str("stack", string(debug.Stack())).
+						Msg("Panic recovered")
+					writePanicRecoveryResponse(rw)
 				} else {
 					if param.isIdempotency {
 						payload, header, err = g.doFinishIdempotencyProcess(
@@ -660,12 +708,17 @@ func (g HTTPController) wrapServiceListData(
 				dto.Filter = urlParam.Query["filter"]
 				dto.Order = strings.Trim(urlParam.Query["order"], " ")
 				dto.Connector = strings.Trim(urlParam.Query["connector"], " ")
+				dto.OrderIDs = strings.Trim(urlParam.Query["order_ids"], " ")
+				dto.OrderIDOperator = strings.Trim(urlParam.Query["order_id_opt"], " ")
 			} else {
 
 				var stringBody string
-				stringBody, ctx.ClientAccess.Logger.ByteIn, err = srv.ReadBody(r)
+				stringBody, ctx.ClientAccess.Logger.ByteIn, err = srv.ReadBodyWithLimit(rw, r, g.maxRequestBodyBytes)
 
 				if err != nil {
+					if stderrors.Is(err, srv.ErrBodyTooLarge) {
+						err = errors.ErrRequestBodyTooLarge
+					}
 					return
 				}
 

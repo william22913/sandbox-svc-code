@@ -16,4 +16,5 @@ type UserExternalModel struct {
 	AccountID     sql.NullInt64
 	AccountName   sql.NullString
 	AccountSchema sql.NullString
+	DBName        sql.NullString
 }

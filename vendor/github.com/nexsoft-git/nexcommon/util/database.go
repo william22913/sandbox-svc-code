@@ -3,10 +3,24 @@ package util
 import (
 	"database/sql"
 	"fmt"
+	"regexp"
 
 	_ "github.com/jackc/pgx/stdlib"
 	"github.com/nexsoft-git/nexlogger/log"
 )
+
+// passwordInConnStr matches the "password = <value>" segment the
+// Password() builder above appends to a connection string, so it can
+// be redacted before that string ever reaches a log line. The DB
+// password is user-supplied and has no fixed character set, so this
+// matches up to the next space (the same separator every other
+// builder method here uses between key/value pairs) rather than
+// trying to enumerate what a password can contain.
+var passwordInConnStr = regexp.MustCompile(`(?i)password\s*=\s*\S+`)
+
+func redactPassword(connStr string) string {
+	return passwordInConnStr.ReplaceAllString(connStr, "password=***")
+}
 
 func DBAddressParam() *dBAddressParam {
 	return &dBAddressParam{
@@ -129,7 +143,16 @@ func getInstance(
 	instance, _errOpen = sql.Open(connInfo.driver, dbConnStr)
 
 	if _errOpen != nil {
-		log.Error().Err(_errOpen).Msg(fmt.Sprintf("Connect failed to DB %v", connInfo))
+		// connInfo.connectionStr previously went into this log line
+		// verbatim, including the literal "password = <value>"
+		// segment the Password() builder appends above -- every
+		// connection failure logged the real DB password in
+		// plaintext. Log a redacted copy instead; connInfo itself is
+		// a local value-type copy (passed by value into this
+		// function), so this doesn't touch the caller's own data.
+		redacted := connInfo
+		redacted.connectionStr = redactPassword(redacted.connectionStr)
+		log.Error().Err(_errOpen).Msg(fmt.Sprintf("Connect failed to DB %v", redacted))
 		instance = nil
 	}
 

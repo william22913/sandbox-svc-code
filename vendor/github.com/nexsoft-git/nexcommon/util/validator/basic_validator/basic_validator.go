@@ -10,6 +10,7 @@ import (
 	"time"
 	"unicode"
 
+	"github.com/google/uuid"
 	"github.com/nexsoft-git/nexcommon/regex"
 )
 
@@ -453,4 +454,37 @@ func (bv BasicValidator) ValidateISO8601Duration(
 	}
 
 	return d.timeDuration(), nil
+}
+
+// IsUUID reports whether input parses as a valid UUID in any of the
+// forms uuid.Parse accepts (canonical hyphenated, no hyphens,
+// urn:uuid:..., braced, and both upper- and lower-case hex).
+//
+// This exists specifically for validating an HTTP path parameter
+// before it reaches a DAO query. PathParams(...) on the HTTP wrapper
+// only records the parameter for the generated swagger document — the
+// value itself never passes through any validator, so a route like
+// /teachers/{id} backed by a uuid column previously sent a malformed
+// id straight to Postgres, which answered with an untyped
+// "invalid input syntax for type uuid" (SQLSTATE 22P02) error that
+// errors.Formator then coerced into a generic 500 — a client's own
+// typo surfacing as a server error, with no typed sentinel a service
+// could catch and translate.
+//
+// Deliberately backed by uuid.Parse rather than a hand-written
+// regular expression: it asks the exact same question Postgres is
+// about to ask, so it can't disagree with Postgres about which forms
+// are valid (uuid.Parse — and Postgres — both accept more than the
+// canonical lowercase-hyphenated shape, e.g. uppercase hex).
+//
+// Call this at the top of a service method for every route whose path
+// has a uuid parameter, before the value reaches any DAO call:
+//
+//	id := param.Path["id"]
+//	if !(basic_validator.BasicValidator{}).IsUUID(id) {
+//	    return nil, nil, error2.ErrFormatField.Param("id").ContextModel(ctx)
+//	}
+func (bv BasicValidator) IsUUID(input string) bool {
+	_, err := uuid.Parse(input)
+	return err == nil
 }

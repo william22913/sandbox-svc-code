@@ -3,11 +3,13 @@ package dao
 import (
 	"database/sql"
 
+	internalCtx "github.com/nexsoft-git/nexcommon/context"
 	"github.com/nexsoft-git/nexcommon/dto/in"
 	"github.com/nexsoft-git/nexcommon/model"
 )
 
 type GetListDataParam struct {
+	ctx                  *internalCtx.ContextModel
 	db                   *sql.DB
 	queryParam           []interface{}
 	query                string

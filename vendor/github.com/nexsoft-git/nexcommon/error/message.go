@@ -25,6 +25,18 @@ var ErrInvalidURLWhitelist = NewUnBundledErrorMessages(403, errors.New("E-3-CMD-
 var ErrReadBody = NewUnBundledErrorMessages(400, errors.New("E-4-CMD-BDY-001"), nil)
 var ErrMarshalingBody = NewUnBundledErrorMessages(400, errors.New("E-4-CMD-BDY-002"), nil)
 var ErrInvalidSignature = NewUnBundledErrorMessages(400, errors.New("E-4-CMD-BDY-003"), nil)
+
+// ErrRequestBodyTooLarge — Part 1 item 10. Before this existed, a
+// request body exceeding the controller's size cap (see
+// server.ReadBodyWithLimit / HTTPController.MaxRequestBodySize) had
+// no typed sentinel to report as: ReadBodyWithLimit's failure flowed
+// through the same path as ReadBody's generic BODY_INVALID failure,
+// which readBody/wrapServiceListData both already translate to the
+// generic ErrReadBody (400). Call sites that want to tell a genuinely
+// oversized body apart from a merely malformed one (e.g. to answer
+// 413 instead of 400) can type-switch on the underlying read error
+// and return this sentinel instead of ErrReadBody.
+var ErrRequestBodyTooLarge = NewUnBundledErrorMessages(413, errors.New("E-4-CMD-BDY-004"), nil)
 var ErrAuditIsDisabled = NewUnBundledErrorMessages(404, errors.New("E-4-CMD-ADT-001"), nil)
 
 var ErrUnimplemted = NewUnBundledErrorMessages(404, errors.New("E-4-CMD-SRV-001"), nil)

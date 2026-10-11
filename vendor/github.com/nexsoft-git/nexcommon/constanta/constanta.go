@@ -39,6 +39,7 @@ const NexAuthUserTokenResult = "USER"
 const AuthorizationHeaderConstanta = "Authorization"
 const RefreshTokenHeaderConstanta = "Refresh-Token"
 const RequestIDConstanta = "X-REQUEST-ID"
+const AcceptLanguageHeaderConstanta = "Accept-Language"
 const ForceHeaderCodeResponse = "X-FORCE-HEADER-CODE"
 const IPAddressConstanta = "X-Forwarded-For"
 const SourceConstanta = "X-SOURCE"
@@ -73,6 +74,7 @@ const NexternalResultValueExternal = "EXTERNALCLIENT"
 const NexternalAccountIDKey = "X-NEXTERNAL-ACCOUNT"
 const NexternalClientIPKey = "X-NEXCLIENT-IP"
 const RESOURCE_CHECKER_DISABLED = "X-RESOURCE_CHECKER_DISABLED"
+const DEFAULT_REDIS_VALUE_KEY = "additional_parse"
 
 var IndonesianTimeByTimeOffset = map[int]string{
 	28800: "WITA",

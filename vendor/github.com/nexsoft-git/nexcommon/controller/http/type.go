@@ -79,6 +79,7 @@ type wrapServiceParam struct {
 	readBody               bool
 	menu                   string
 	pathParams             []string
+	pathParamTypes         map[string]string
 	headers                []string
 	apiScope               string
 	permission             string
@@ -147,6 +148,7 @@ type wrapGetListServiceParam struct {
 	service                  services.ServicesWithGetListData
 	cv                       controller.ServerAccessValidator
 	pathParams               []string
+	pathParamTypes           map[string]string
 	headers                  []string
 	apiScope                 string
 	permission               string
@@ -248,6 +250,23 @@ func (w *wrapServiceParam) PathParams(paths ...string) *wrapServiceParam {
 	return w
 }
 
+// PathParamTypes declares the generated swagger document's "type" for
+// specific path params by name (e.g. {"id": "string"}), overriding the
+// name-based heuristic the swagger generator otherwise falls back to
+// for any param not given here — that heuristic types a param
+// "integer" whenever its name contains "id" (case-insensitive) and
+// isn't literally named "uuid", which documents every uuid-keyed path
+// param whose name is something like {eduId} or {teacherId} as an
+// integer. Optional: a param not present in this map keeps today's
+// heuristic behavior, so no existing WrapService call needs to change.
+// For a uuid param, pass "string" here (format: uuid isn't expressible
+// through this string-valued map; hand-correct the generated document
+// afterward if the format itself needs to be exact).
+func (w *wrapServiceParam) PathParamTypes(types map[string]string) *wrapServiceParam {
+	w.pathParamTypes = types
+	return w
+}
+
 func (w *wrapServiceParam) Headers(headers ...string) *wrapServiceParam {
 	w.headers = headers
 	return w
@@ -296,6 +315,13 @@ func (w *wrapGetListServiceParam) DataScope(dataScope ...string) *wrapGetListSer
 
 func (w *wrapGetListServiceParam) PathParams(paths ...string) *wrapGetListServiceParam {
 	w.pathParams = paths
+	return w
+}
+
+// PathParamTypes — see wrapServiceParam.PathParamTypes's doc comment;
+// same mechanism, same reason, for the get-list wrapper.
+func (w *wrapGetListServiceParam) PathParamTypes(types map[string]string) *wrapGetListServiceParam {
+	w.pathParamTypes = types
 	return w
 }
 

@@ -126,6 +126,8 @@ func (u externalUserJWTValidator) ValidateJWTToken(
 		_ctx.AuthAccessTokenModel.AuthenticationServerUserID = int64(auth)
 		_ctx.AuthAccessTokenModel.Scope = scope
 		_ctx.AuthAccessTokenModel.Locale = payload.Locale
+		_ctx.AuthAccessTokenModel.DBName = clientData.DBName.String
+		_ctx.AuthAccessTokenModel.Schema = clientData.AccountSchema.String
 
 		_ctx.Limitation.DBSchema = clientData.AccountSchema.String
 		_ctx.Limitation.UserID = int64(auth)

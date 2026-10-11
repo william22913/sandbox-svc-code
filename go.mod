@@ -7,8 +7,8 @@ require (
 	github.com/gorilla/mux v1.8.0
 	github.com/jackc/pgx v3.6.2+incompatible
 	github.com/kelseyhightower/envconfig v1.4.0
-	github.com/nexsoft-git/nexcommon v0.3.57-swagger-alpha
-	github.com/nexsoft-git/nexlogger v0.0.13
+	github.com/nexsoft-git/nexcommon v0.3.67-swagger
+	github.com/nexsoft-git/nexlogger v0.0.18
 	github.com/prometheus/client_golang v1.14.0
 	github.com/rubenv/sql-migrate v1.3.1
 )
@@ -77,6 +77,7 @@ require (
 	github.com/prometheus/procfs v0.8.0 // indirect
 	github.com/rabbitmq/amqp091-go v1.9.0 // indirect
 	github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475 // indirect
+	github.com/robfig/cron v1.2.0 // indirect
 	github.com/sirupsen/logrus v1.8.1 // indirect
 	go.mongodb.org/mongo-driver v1.14.0 // indirect
 	golang.org/x/crypto v0.17.0 // indirect

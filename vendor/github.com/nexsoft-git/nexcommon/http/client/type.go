@@ -56,10 +56,26 @@ type APIConnector interface {
 	)
 
 	DisableApiConnectorLog()
+
+	ParseURL(
+		url string,
+		urlParam interface{},
+	) (
+		parsedURL string,
+	)
+
+	ParseHeader(
+		headerParam interface{},
+	) map[string]string
+
+	ParseMultipartStruct(
+		multipartParam interface{},
+	) model.MultipartRequest
 }
 
 type ExternalActivityDTO struct {
 	Err            bool              `json:"-"`
+	AccountKey     string            `json:"account_key"`
 	Source         string            `json:"source"`
 	Destination    string            `json:"destination"`
 	URL            string            `json:"url"`

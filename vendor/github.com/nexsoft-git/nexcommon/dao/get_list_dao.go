@@ -7,22 +7,39 @@ import (
 	"strconv"
 	"strings"
 
+	internalCtx "github.com/nexsoft-git/nexcommon/context"
 	"github.com/nexsoft-git/nexcommon/dto/in"
 	"github.com/nexsoft-git/nexcommon/model"
+	"github.com/nexsoft-git/nexcommon/util/multi_database"
 )
 
 type GetListDataDAO struct {
-	DB *sql.DB
+	DB            *sql.DB
+	MultiDatabase *multi_database.MultiDatabase
 }
 
 func (g GetListDataDAO) NewGetListDataParam(
+	ctx *internalCtx.ContextModel,
 	query string,
 	dto in.GetListRequest,
 	searchBy []model.SearchParam,
 	wrap RowsParser,
-) *GetListDataParam {
+) (
+	*GetListDataParam,
+	error,
+) {
+	var err error
+
+	dbConn := g.DB
+	if g.MultiDatabase != nil {
+		dbConn, err = g.MultiDatabase.GetDBConnectionByContext(ctx)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	param := &GetListDataParam{
-		db:             g.DB,
+		db:             dbConn,
 		prefixField:    NewParamPrefix(),
 		fieldConverter: NewParaFieldConverter(),
 		DTO:            dto,
@@ -33,7 +50,7 @@ func (g GetListDataDAO) NewGetListDataParam(
 		deleted:        true,
 	}
 
-	return param
+	return param, nil
 }
 
 func (d GetListDataDAO) GetListDataWithDefaultMustCheck(
@@ -222,9 +239,22 @@ func (d GetListDataDAO) getListDataWithDefaultMustCheck(
 			}
 		}
 
-		if len(orderTemp) > 0 {
+		if len(orderTemp) > 0 || param.DTO.OrderIDs != "" {
 			order = strings.Join(orderTemp, ", ")
-			param.queryWhere += fmt.Sprintf("ORDER BY %s ", order)
+			orders := []string{}
+
+			if param.DTO.OrderIDs != "" {
+				splitData := strings.Split(param.DTO.OrderIDs, " in ")
+				field := generateFieldQuery(param, splitData[0])
+				queryOrder := field + " in " + splitData[1]
+				orders = append(orders, queryOrder+" "+param.DTO.OrderIDOperator)
+			}
+
+			if order != "" {
+				orders = append(orders, order)
+			}
+
+			param.queryWhere += " ORDER BY " + strings.Join(orders, ", ") + " "
 		}
 
 		if param.DTO.Limit != -1 {

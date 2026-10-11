@@ -146,6 +146,23 @@ func (cv ControllerValidator) setAuthDataToContext(
 		return errors.ErrUnauthorized
 	}
 
+	additionalRedisParser := cv.tokenValidator.GetAdditionalRedisValueParser()
+
+	if additionalRedisParser != nil {
+		otherValue := tokenModel.Other
+		if otherValue == nil {
+			otherValue = make(map[string]interface{})
+		}
+
+		err := json.Unmarshal([]byte(result), &additionalRedisParser)
+		if err != nil {
+			return errors.ErrUnauthorized
+		}
+
+		otherValue[constanta.DEFAULT_REDIS_VALUE_KEY] = additionalRedisParser
+		tokenModel.Other = otherValue
+	}
+
 	_ctx.AuthAccessTokenModel.Role = authModel.Role
 	_ctx.AuthAccessTokenModel.DataGroup = authModel.Data
 	auth, _ := strconv.Atoi(authModel.Oauth.UserID)
@@ -153,6 +170,9 @@ func (cv ControllerValidator) setAuthDataToContext(
 	_ctx.AuthAccessTokenModel.AuthenticationServerUserID = int64(auth)
 	_ctx.AuthAccessTokenModel.ClientID = authModel.Oauth.ClientID
 	_ctx.AuthAccessTokenModel.Scope = authModel.Oauth.Scope
+	_ctx.AuthAccessTokenModel.DBName = tokenModel.DBName
+	_ctx.AuthAccessTokenModel.Schema = tokenModel.Schema
+
 	_ctx.Limitation.Other = tokenModel.Other
 
 	ctx = context.WithValue(ctx, constanta.ApplicationContextConstanta, _ctx)

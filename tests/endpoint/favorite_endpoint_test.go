@@ -111,32 +111,27 @@ func TestDeleteIsDocumentedTaggedAndSecured(t *testing.T) {
 	}
 }
 
-// TestCollectionPathDocumentsOnlyOneMethod pins a nexcommon limitation rather
-// than a choice made here.
+// TestCollectionPathDocumentsEveryMethod — POST and GET both live on
+// /v1/favorites, and the generated document must carry both.
 //
-// NewHandleFuncParam assigns a fresh method map for the path on every call:
+// This replaces a test that pinned the opposite. Under nexcommon
+// v0.3.57-swagger-alpha, NewHandleFuncParam assigned a fresh method map on every
+// call (`SwaggerPath[path] = make(...)`), so two routes on one path overwrote
+// each other and only the last-registered survived — which is why
+// api/openapi.yaml was corrected by hand. The library now guards that assignment
+// (`if SwaggerPath[path] == nil`, param.go:21), so the write is additive and
+// both operations survive.
 //
-//	swagger.SwaggerContainer.SwaggerPath[path] = make(swagger.SwaggerControllerMethods)
-//
-// Two routes on one path therefore overwrite each other, and only the last
-// registered survives in the generated document. POST /v1/favorites is
-// genuinely routed and genuinely tagged at registration time — it is the
-// document that loses it, not the service. Until that assignment becomes an
-// additive write, the OpenAPI artifact is corrected by hand.
-//
-// If this test starts failing with a second method listed, the library has been
-// fixed: drop the hand-correction and assert both operations here instead.
-func TestCollectionPathDocumentsOnlyOneMethod(t *testing.T) {
+// If this test ever fails with one method listed, the overwrite regression is
+// back and the OpenAPI artifact needs its hand-correction again.
+func TestCollectionPathDocumentsEveryMethod(t *testing.T) {
 	register()
 
 	methods := swagger.SwaggerContainer.SwaggerPath[favorite_endpoint.Path]
-	if len(methods) != 1 {
-		t.Fatalf("%s documents %d methods (%v); the deduping assumption no longer holds",
-			favorite_endpoint.Path, len(methods), methodNames(methods))
-	}
-	if _, ok := methods["get"]; !ok {
-		t.Fatalf("%s documents %v, expected the last-registered GET to be the survivor",
-			favorite_endpoint.Path, methodNames(methods))
+	for _, want := range []string{"post", "get"} {
+		if _, ok := methods[want]; !ok {
+			t.Fatalf("%s documents %v, want both post and get", favorite_endpoint.Path, methodNames(methods))
+		}
 	}
 }
 

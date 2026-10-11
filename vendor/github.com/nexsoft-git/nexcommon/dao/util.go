@@ -283,6 +283,13 @@ func GetDataMultipleRowResult(
 			}
 
 		}
+		// rows.Next() returning false doesn't distinguish "exhausted
+		// normally" from "a mid-iteration driver error stopped it
+		// early" — without this check the second case silently reads
+		// as a short-but-complete result instead of a failure.
+		if err = rows.Err(); err != nil {
+			return
+		}
 	}
 
 	return

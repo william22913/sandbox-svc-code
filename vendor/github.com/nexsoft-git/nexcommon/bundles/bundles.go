@@ -2,6 +2,7 @@ package bundles
 
 import (
 	"encoding/json"
+	stderrors "errors"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -77,6 +78,58 @@ func (b bundles) ReadMessageBundle(
 		})
 	}
 
+	return
+}
+
+// HasMessage — see the Bundles interface doc comment. Uses Localize
+// (returns an error) rather than MustLocalize (panics), so this can
+// check existence without needing a recover() and without the
+// ambiguity of "did ReadMessageBundle return the real translation, or
+// did it fall back to echoing the raw key because nothing matched."
+//
+// Deliberately checks for *i18n.MessageNotFoundErr specifically,
+// rather than treating any non-nil error as "missing": a real bundle
+// entry's template (e.g. "Field {{.FieldName}} Cannot Empty") fails
+// to EXECUTE with no TemplateData supplied, which Localize also
+// surfaces as a non-nil error even though the key itself is present —
+// an existence check has to tell those two failure modes apart, or
+// every templated entry in the whole bundle would wrongly report as
+// missing.
+func (b bundles) HasMessage(
+	bundleName string,
+	messageID string,
+	language string,
+) bool {
+	if language == "" {
+		language = b.defaultLanguage
+	}
+
+	bundle, ok := b.bundles[bundleName]
+	if !ok {
+		return false
+	}
+
+	localize := i18n.NewLocalizer(bundle, language)
+	_, err := localize.Localize(&i18n.LocalizeConfig{MessageID: messageID})
+	if err == nil {
+		return true
+	}
+
+	var notFound *i18n.MessageNotFoundErr
+	return !stderrors.As(err, &notFound)
+}
+
+// ValidateKeysExist — see the Bundles interface doc comment.
+func (b bundles) ValidateKeysExist(
+	bundleName string,
+	keys []string,
+	language string,
+) (missing []string) {
+	for _, key := range keys {
+		if !b.HasMessage(bundleName, key, language) {
+			missing = append(missing, key)
+		}
+	}
 	return
 }
 

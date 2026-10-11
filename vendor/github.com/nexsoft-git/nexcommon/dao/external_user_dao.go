@@ -18,7 +18,13 @@ func NewExternalUserDAO(
 		schema:          schema,
 		table:           table,
 		getAccountQuery: getAccountQuery,
+		isUseMultipleDB: false,
 	}
+}
+
+func (e *ExternalUserDAO) SetUseMultipleDB() *ExternalUserDAO {
+	e.isUseMultipleDB = true
+	return e
 }
 
 type ExternalUserDAO struct {
@@ -26,6 +32,7 @@ type ExternalUserDAO struct {
 	schema          string
 	table           string
 	getAccountQuery GetAccountQuery
+	isUseMultipleDB bool
 }
 
 type GetAccountQuery func() string
@@ -43,11 +50,18 @@ func (e ExternalUserDAO) GetExternalClientWithAccountKey(
 		tableName = fmt.Sprintf("%s.%s", e.schema, e.table)
 	}
 
-	query := `
+	selectQuery := `
 	SELECT 
 		u.id, client_id, signature_key, 
 		locale, client_alias, deleted, 
-		account.id, account.name, account.schema
+		account.id, account.name, account.schema`
+
+	if e.isUseMultipleDB {
+		selectQuery += `, account.db_name`
+	}
+
+	query := `
+	` + selectQuery + `
 	FROM
 		` + tableName + ` u left join (` + e.getAccountQuery() + `) as account
 		on u.id is not null
@@ -56,12 +70,22 @@ func (e ExternalUserDAO) GetExternalClientWithAccountKey(
 		client_id = $2   
 	`
 
-	err = e.db.QueryRow(query, []interface{}{accountKey, clientID}...).
-		Scan(
+	row := e.db.QueryRow(query, []interface{}{accountKey, clientID}...)
+	if e.isUseMultipleDB {
+		err = row.Scan(
 			&result.ID, &result.ClientID, &result.SignatureKey,
 			&result.Locale, &result.ClientAlias, &result.Deleted,
 			&result.AccountID, &result.AccountName, &result.AccountSchema,
+			&result.DBName,
 		)
+		return result, err
+	}
+
+	err = row.Scan(
+		&result.ID, &result.ClientID, &result.SignatureKey,
+		&result.Locale, &result.ClientAlias, &result.Deleted,
+		&result.AccountID, &result.AccountName, &result.AccountSchema,
+	)
 
 	return result, err
 

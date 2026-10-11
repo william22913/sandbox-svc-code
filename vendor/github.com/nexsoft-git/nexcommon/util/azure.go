@@ -16,8 +16,8 @@ func NewAzureConfig(
 	accountName string,
 	host string,
 	suffix string,
-) azureConfig {
-	return azureConfig{
+) AzureConfig {
+	return AzureConfig{
 		accountKey:  accountKey,
 		accountName: accountName,
 		host:        host,
@@ -25,14 +25,14 @@ func NewAzureConfig(
 	}
 }
 
-type azureConfig struct {
+type AzureConfig struct {
 	accountKey  string
 	accountName string
 	host        string
 	suffix      string
 }
 
-func (a azureConfig) GeneratePipeline() pipeline.Pipeline {
+func (a AzureConfig) GeneratePipeline() pipeline.Pipeline {
 	credential, err := azblob.NewSharedKeyCredential(a.accountName, a.accountKey)
 	if err != nil {
 		//TODO LOG FATAL
@@ -44,7 +44,7 @@ func (a azureConfig) GeneratePipeline() pipeline.Pipeline {
 }
 
 func NewAzureHelper(
-	config azureConfig,
+	config AzureConfig,
 ) AzureHelper {
 	return AzureHelper{
 		config:   config,
@@ -53,7 +53,7 @@ func NewAzureHelper(
 }
 
 type AzureHelper struct {
-	config   azureConfig
+	config   AzureConfig
 	pipeline pipeline.Pipeline
 }
 

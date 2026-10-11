@@ -93,13 +93,49 @@ func (t multiLevelWriter) WriteLevel(l Level, p []byte) (n int, err error) {
 func MultiLevelWriter(writers ...io.Writer) LevelWriter {
 	lwriters := make([]LevelWriter, 0, len(writers))
 	for _, w := range writers {
+
 		if lw, ok := w.(LevelWriter); ok {
 			lwriters = append(lwriters, lw)
 		} else {
 			lwriters = append(lwriters, levelWriterAdapter{w})
 		}
 	}
+
 	return multiLevelWriter{lwriters}
+}
+
+// MultiLevelWriter creates a writer that duplicates its writes to all the
+// provided writers, similar to the Unix tee(1) command. If some writers
+// implement LevelWriter, their WriteLevel method will be used instead of Write.
+func MultiLevelWriterWithFile(
+	writers ...io.Writer,
+) (
+	lw LevelWriter,
+	file FileWriter,
+	err error,
+) {
+
+	LogFile, err = NewFileWriter()
+
+	if err != nil {
+		return nil, nil, err
+	}
+
+	startSchedulingWrapLogFile()
+
+	writers = append(writers, LogFile)
+	lwriters := make([]LevelWriter, 0, len(writers))
+
+	for _, w := range writers {
+
+		if lw, ok := w.(LevelWriter); ok {
+			lwriters = append(lwriters, lw)
+		} else {
+			lwriters = append(lwriters, levelWriterAdapter{w})
+		}
+	}
+
+	return multiLevelWriter{lwriters}, LogFile, nil
 }
 
 // TestingLog is the logging interface of testing.TB.

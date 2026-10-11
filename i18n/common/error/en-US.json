@@ -17,9 +17,10 @@
 
   "E-4-CMD-ADT-001": "Additional validation failed",
 
-  "E-4-CMD-BDY-001": "The request body is invalid",
-  "E-4-CMD-BDY-002": "The request body is too large",
-  "E-4-CMD-BDY-003": "The request body is not supported",
+  "E-4-CMD-BDY-001": "The request body could not be read",
+  "E-4-CMD-BDY-002": "The request body is invalid",
+  "E-4-CMD-BDY-003": "The request signature is invalid",
+  "E-4-CMD-BDY-004": "The request body is too large",
 
   "E-4-CMD-DTO-001": "Field {{.FieldName}} Cannot Empty",
   "E-4-CMD-DTO-002": "Invalid Format in Field {{.FieldName}}",

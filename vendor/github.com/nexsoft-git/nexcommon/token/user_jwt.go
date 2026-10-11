@@ -3,6 +3,7 @@ package token
 import (
 	"context"
 	"net/http"
+	"reflect"
 	"strconv"
 
 	"github.com/go-redis/redis/v7"
@@ -15,6 +16,29 @@ import (
 
 type userJWTValidator struct {
 	nexsoftJWT
+	additionalUserValue interface{}
+}
+
+func (u *userJWTValidator) SetAdditionalRedisValueParser(
+	additional interface{},
+) {
+	u.additionalUserValue = additional
+}
+
+func (u *userJWTValidator) GetAdditionalRedisValueParser() interface{} {
+	if u.additionalUserValue == nil {
+		return nil
+	}
+
+	valueType := reflect.TypeOf(u.additionalUserValue)
+
+	if valueType.Kind() == reflect.Ptr {
+		valueType = valueType.Elem()
+	}
+
+	newValue := reflect.New(valueType)
+
+	return newValue.Interface()
 }
 
 func (u userJWTValidator) ValidateJWTToken(

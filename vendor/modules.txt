@@ -245,7 +245,7 @@ github.com/nats-io/nuid
 # github.com/nexsoft-git/jwt-go v1.0.2
 ## explicit; go 1.19
 github.com/nexsoft-git/jwt-go
-# github.com/nexsoft-git/nexcommon v0.3.57-swagger-alpha
+# github.com/nexsoft-git/nexcommon v0.3.67-swagger
 ## explicit; go 1.16
 github.com/nexsoft-git/nexcommon/bundles
 github.com/nexsoft-git/nexcommon/constanta
@@ -274,13 +274,14 @@ github.com/nexsoft-git/nexcommon/token/model
 github.com/nexsoft-git/nexcommon/token/refresh_token_dto
 github.com/nexsoft-git/nexcommon/util
 github.com/nexsoft-git/nexcommon/util/activity
+github.com/nexsoft-git/nexcommon/util/multi_database
 github.com/nexsoft-git/nexcommon/util/text
 github.com/nexsoft-git/nexcommon/util/validator/basic_validator
 github.com/nexsoft-git/nexcommon/util/validator/get_list_validator
 github.com/nexsoft-git/nexcommon/util/validator/multipart_validator
 github.com/nexsoft-git/nexcommon/util/validator/tag_validator
-# github.com/nexsoft-git/nexlogger v0.0.13
-## explicit; go 1.19
+# github.com/nexsoft-git/nexlogger v0.0.18
+## explicit; go 1.16
 github.com/nexsoft-git/nexlogger
 github.com/nexsoft-git/nexlogger/internal/cbor
 github.com/nexsoft-git/nexlogger/internal/json
@@ -332,6 +333,9 @@ github.com/rabbitmq/amqp091-go
 # github.com/rcrowley/go-metrics v0.0.0-20201227073835-cf1acfcdf475
 ## explicit
 github.com/rcrowley/go-metrics
+# github.com/robfig/cron v1.2.0
+## explicit
+github.com/robfig/cron
 # github.com/rubenv/sql-migrate v1.3.1
 ## explicit; go 1.16
 github.com/rubenv/sql-migrate

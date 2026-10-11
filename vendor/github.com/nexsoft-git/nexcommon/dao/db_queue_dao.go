@@ -21,6 +21,8 @@ type DBQueueDAO interface {
 
 	EnablePendingProcessingMessage()
 
+	EnableDynamicNumberOfProcessor()
+
 	InsertToDBQueueDAO(
 		payload model.DBQueueModel,
 	) (
@@ -74,6 +76,23 @@ type DBQueueDAO interface {
 		result []model.DBQueueModel,
 		err error,
 	)
+
+	GetDistinctUniqueIdentifierFromDBQueueDAO(
+		queueType string,
+	) (
+		result []string,
+		err error,
+	)
+
+	GetFromDBQueueDAOByUniqueIdentifier(
+		queueType string,
+		uniqueIdentifier string,
+		length int,
+	) (
+		tx *sql.Tx,
+		result []model.DBQueueModel,
+		err error,
+	)
 }
 
 func NewDBQueueDAO(
@@ -104,6 +123,7 @@ type dbQueueDAO struct {
 	historyEnabled                 bool
 	durationPendingIfError         time.Duration
 	enablePendingProcessingMessage bool
+	enableDynamicNumberOfProcessor bool
 }
 
 func (d *dbQueueDAO) SetPendingErrorDuration(
@@ -114,6 +134,10 @@ func (d *dbQueueDAO) SetPendingErrorDuration(
 
 func (d *dbQueueDAO) EnablePendingProcessingMessage() {
 	d.enablePendingProcessingMessage = true
+}
+
+func (d *dbQueueDAO) EnableDynamicNumberOfProcessor() {
+	d.enableDynamicNumberOfProcessor = true
 }
 
 func (d *dbQueueDAO) getDBTable() string {
@@ -153,7 +177,6 @@ func (d dbQueueDAO) InsertToDBQueueDAO(
 	}()
 
 	queryInsert := " type, payload, created_at, updated_at, retry_counter, max_retry, message_id, ack_topic, incoming_message_id "
-	queryParamInsert := " $1, $2, $3, $4, 0, $5, $6, $7, $8 "
 
 	param := []interface{}{
 		payload.QueueType.String,
@@ -166,10 +189,18 @@ func (d dbQueueDAO) InsertToDBQueueDAO(
 		payload.IncomingMessageID,
 	}
 
+	queryParamInsert := " $1, $2, $3, $4, 0, $5, $6, $7, $8 "
+
 	if d.enablePendingProcessingMessage {
 		queryInsert += ", processed_after "
-		queryParamInsert += ", $9 "
+		queryParamInsert += fmt.Sprintf(", $%d ", len(param)+1)
 		param = append(param, payload.ProcessedAfter)
+	}
+
+	if d.enableDynamicNumberOfProcessor {
+		queryInsert += ", unique_identifier "
+		queryParamInsert += fmt.Sprintf(", $%d ", len(param)+1)
+		param = append(param, payload.UniqueIdentifier)
 	}
 
 	stmt, err := tx.Prepare(
@@ -476,6 +507,19 @@ func (d dbQueueDAO) GetFromDBQueueDAO(
 			" LIMIT $2 "+
 			" FOR UPDATE SKIP LOCKED ", d.getDBTable(), queryWhere)
 
+	if d.enableDynamicNumberOfProcessor {
+		query = fmt.Sprintf(
+			"SELECT "+
+				" id, type, payload, message_id, ack_topic, unique_identifier "+
+				" FROM %s "+
+				" WHERE "+
+				"	( %s )  "+
+				"	OR ( type = $1 AND ack_waiting IS TRUE AND (EXTRACT(EPOCH from $4 - updated_at) > $3 )) "+
+				" ORDER BY updated_at ASC "+
+				" LIMIT $2 "+
+				" FOR UPDATE SKIP LOCKED ", d.getDBTable(), queryWhere)
+	}
+
 	param := []interface{}{
 		queueType,
 		length,
@@ -512,7 +556,11 @@ func (d dbQueueDAO) GetFromDBQueueDAO(
 
 			var temp model.DBQueueModel
 
-			err = rows.Scan(&temp.ID, &temp.QueueType, &temp.Payload, &temp.MessageID, &temp.AckTopic)
+			if d.enableDynamicNumberOfProcessor {
+				err = rows.Scan(&temp.ID, &temp.QueueType, &temp.Payload, &temp.MessageID, &temp.AckTopic, &temp.UniqueIdentifier)
+			} else {
+				err = rows.Scan(&temp.ID, &temp.QueueType, &temp.Payload, &temp.MessageID, &temp.AckTopic)
+			}
 			if err != nil {
 				return
 			}
@@ -524,6 +572,134 @@ func (d dbQueueDAO) GetFromDBQueueDAO(
 
 	return
 
+}
+
+func (d dbQueueDAO) GetDistinctUniqueIdentifierFromDBQueueDAO(
+	queueType string,
+) (
+	result []string,
+	err error,
+) {
+	rows, err := d.db.Query(
+		fmt.Sprintf(
+			"SELECT DISTINCT unique_identifier FROM %s WHERE type = $1 AND unique_identifier IS NOT NULL AND unique_identifier != ''",
+			d.getDBTable(),
+		),
+		queueType,
+	)
+	if err != nil {
+		return
+	}
+
+	if rows != nil {
+		defer func() {
+			errs := rows.Close()
+			if errs != nil {
+				log.Error().
+					Err(errs).
+					Caller().
+					Msg("Error Found when close get unique identifier dao connection")
+			}
+		}()
+
+		for rows.Next() {
+			var uniqueIdentifier sql.NullString
+
+			err = rows.Scan(&uniqueIdentifier)
+			if err != nil {
+				return
+			}
+
+			if uniqueIdentifier.Valid && uniqueIdentifier.String != "" {
+				result = append(result, uniqueIdentifier.String)
+			}
+		}
+	}
+
+	return
+}
+
+func (d dbQueueDAO) GetFromDBQueueDAOByUniqueIdentifier(
+	queueType string,
+	uniqueIdentifier string,
+	length int,
+) (
+	tx *sql.Tx,
+	result []model.DBQueueModel,
+	err error,
+) {
+	tx, err = d.db.Begin()
+	if err != nil {
+		return
+	}
+
+	timeNow := time.Now()
+
+	queryWhere := " type = $1 AND unique_identifier = $2 AND ack_waiting IS FALSE AND retry_counter <= max_retry "
+
+	if d.durationPendingIfError.Seconds() > 0 {
+		queryWhere += " AND (EXTRACT(EPOCH from $5 - updated_at) > $6 OR retry_counter = 0 ) "
+	}
+
+	if d.enablePendingProcessingMessage {
+		queryWhere += "AND (processed_after is NULL OR processed_after <= $5) "
+	}
+
+	query := fmt.Sprintf(
+		"SELECT "+
+			" id, type, payload, message_id, ack_topic, unique_identifier "+
+			" FROM %s "+
+			" WHERE "+
+			"	( %s )  "+
+			"	OR ( type = $1 AND unique_identifier = $2 AND ack_waiting IS TRUE AND (EXTRACT(EPOCH from $5 - updated_at) > $4 )) "+
+			" ORDER BY updated_at ASC "+
+			" LIMIT $3 "+
+			" FOR UPDATE SKIP LOCKED ", d.getDBTable(), queryWhere)
+
+	param := []interface{}{
+		queueType,
+		uniqueIdentifier,
+		length,
+		d.ackWaiting.Seconds(),
+		timeNow,
+	}
+
+	if d.durationPendingIfError.Seconds() > 0 {
+		param = append(param, d.durationPendingIfError.Seconds())
+	}
+
+	rows, err := tx.Query(
+		query,
+		param...,
+	)
+	if err != nil {
+		return
+	}
+
+	if rows != nil {
+		defer func() {
+			errs := rows.Close()
+			if errs != nil {
+				log.Error().
+					Err(errs).
+					Caller().
+					Msg("Error Found when close get list by unique identifier dao connection")
+			}
+		}()
+
+		for rows.Next() {
+			var temp model.DBQueueModel
+
+			err = rows.Scan(&temp.ID, &temp.QueueType, &temp.Payload, &temp.MessageID, &temp.AckTopic, &temp.UniqueIdentifier)
+			if err != nil {
+				return
+			}
+
+			result = append(result, temp)
+		}
+	}
+
+	return
 }
 
 func (d dbQueueDAO) doInsertHistoryQueue(

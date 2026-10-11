@@ -96,6 +96,8 @@ func (cv ControllerValidator) setAuthDataToContextInternal(
 	_ctx.AuthAccessTokenModel.ClientAlias = redisModel.ClientAlias
 	_ctx.AuthAccessTokenModel.AliasName = redisModel.AliasName
 	_ctx.AuthAccessTokenModel.ClientID = authModel.Oauth.ClientID
+	_ctx.AuthAccessTokenModel.DBName = redisModel.DBName
+	_ctx.AuthAccessTokenModel.Schema = redisModel.Schema
 
 	_ctx.Limitation.UserID = int64(auth)
 	_ctx.Limitation.ServiceUserID = redisModel.ResourceUserID
