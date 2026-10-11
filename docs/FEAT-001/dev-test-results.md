@@ -111,14 +111,44 @@ would be the only way this endpoint could answer differently. Documented in
 
 ## Known limitations
 
-**`-race` was not available.** `go test -race` fails on this machine with
-`cgo: C compiler "gcc" not found`, and there is no other C compiler on
-`PATH`. The cap's concurrency guarantee — `TestAddCapHoldsUnderConcurrentRequests`,
-which fires 8 concurrent adds for 1 free slot — therefore ran **without** the
-race detector. It passes and asserts the invariant it can see (exactly one
-insert, seven rejections, final count equal to the limit), but a data race
-inside the DAO's transaction would not have been reported. CI should run that
-test with `-race`.
+**`-race` runs, but not on this machine's toolchain.** `go test -race` here fails
+with `cgo: C compiler "gcc" not found` and there is no other C compiler on
+`PATH`, so the detector was run in a `golang:1.23` container instead: cgo on,
+`-mod=vendor`, the whole `./tests/...` tree, and `tests/db` against its real
+Postgres rather than a mock. Every package is clean.
+
+```
+ok  github.com/william22913/sandbox-svc-code/tests            1.272s
+ok  github.com/william22913/sandbox-svc-code/tests/db         8.064s
+ok  github.com/william22913/sandbox-svc-code/tests/dto        1.029s
+ok  github.com/william22913/sandbox-svc-code/tests/endpoint   1.086s
+ok  github.com/william22913/sandbox-svc-code/tests/middleware 1.067s
+ok  github.com/william22913/sandbox-svc-code/tests/service    1.019s
+```
+
+`TestAddCapHoldsUnderConcurrentRequests` — 8 concurrent adds for 1 free slot — is
+therefore race-detector-verified, not merely invariant-asserted: the DAO's
+insert-and-count transaction contains no data race.
+
+Two things about the run are worth recording, because neither is visible from the
+command alone. First, `tests/db` starts Postgres by shelling out to `docker` and
+then reading back the published host port, with the DSN hardcoded to
+`host=127.0.0.1`; on Docker Desktop a container nested inside another container
+cannot reach that published port at all, so the run shimmed the `docker` binary to
+give the spawned Postgres the runner's own network namespace and report the port
+directly. The tests were not modified — only the runner. Second, it had to be
+Go 1.23: on `golang:1.19` the suite does not build (next paragraph).
+
+**`go.mod` declares `go 1.19`, which is below the real floor.** Running the suite
+on a 1.19 toolchain fails in `tests/endpoint` with
+`vendor/github.com/go-openapi/swag/string_bytes.go:7:29: undefined: unsafe.StringData`
+— `unsafe.StringData` arrived in Go 1.20, and that vendored package is pulled in
+through nexcommon's swagger wiring. `go 1.19` therefore understates the
+requirement; anything that trusts the directive (a CI image, a developer's local
+toolchain) can fail to build a tree that is fine on the 1.23 the Dockerfile
+already uses. Left unchanged as written, since raising it to 1.23 would also
+silently switch loop-variable semantics across the whole module — the decision is
+worth making deliberately, and 1.20 is the minimal honest value.
 
 **The swagger document drops `POST /v1/favorites`.** nexcommon's
 `NewHandleFuncParam` assigns a fresh method map for a path on every call
@@ -231,8 +261,8 @@ Caveats, in order of weight:
 3. **`config/config.go:70` references `sql_migrations/seed`, which does not
    exist.** ~~Nothing in the repo provides it.~~ **Resolved in Part 6** — the
    fixture now exists at `sql_migrations/seed/1_sandbox_seed.sql`.
-4. **`-race` could not run locally** (see Known limitations). CI should run the
-   cap's concurrency test under the race detector.
+4. ~~**`-race` could not run locally.**~~ **Resolved in Part 7** — the whole
+   `./tests/...` tree, `tests/db` included, is race-clean under `golang:1.23`.
 
 ### Spec compliance
 
@@ -385,9 +415,9 @@ stays the service's real one.
 
 **Limitations, updated.**
 
-- **`-race` still cannot run locally** (no gcc on this machine), so the 500-cap
-  concurrency guarantee remains unit-tested but not race-detector-verified. CI
-  should run it under `-race`.
+- **`-race` now runs** (in a container, for want of a local gcc) — the full
+  `./tests/...` tree including the DB-backed cap test is race-clean. `go.mod`'s
+  `go 1.19` directive is now the standing defect instead; see Known limitations.
 - **No CI workflow** (`.github/workflows/` absent), unchanged from Part 5.
 - The Redis token fixture is still seeded by hand; the Postgres fixture now exists.
 
@@ -614,3 +644,52 @@ key (`Warning: Invalid option supplied`), so the working command uses
 `folderStrategy=Tags` alone. The `enrich-collection.js` post-processor is what
 makes the type-hint placeholders the converter emits (`<long>`) usable as
 `{{item_id}}`.
+
+## Delivery guard (Part 7) — the race detector
+
+Requested after Part 6, and the one item every earlier part had to leave open:
+`go test -race` had never run on this tree. It still cannot run natively — there
+is no C compiler on this Windows machine — so it ran in a Linux container instead.
+The whole `./tests/...` tree is clean, `tests/db` included, against its real
+Postgres:
+
+```
+ok  github.com/william22913/sandbox-svc-code/tests            1.272s
+ok  github.com/william22913/sandbox-svc-code/tests/db         8.064s
+ok  github.com/william22913/sandbox-svc-code/tests/dto        1.029s
+ok  github.com/william22913/sandbox-svc-code/tests/endpoint   1.086s
+ok  github.com/william22913/sandbox-svc-code/tests/middleware 1.067s
+ok  github.com/william22913/sandbox-svc-code/tests/service    1.019s
+```
+
+`TestAddCapHoldsUnderConcurrentRequests` (8 concurrent adds for 1 free slot) is now
+race-detector-verified rather than invariant-asserted alone.
+
+**Getting `tests/db` to run under the detector was the whole difficulty, and the
+obstacle was the harness, not the code.** `testdb.Start` shells out to `docker`,
+then reads the published host port back with `docker port`, and the DSN it builds
+is hardcoded to `host=127.0.0.1`. A container nested inside another container on
+Docker Desktop cannot reach that published port — `--network host` there is not the
+Linux VM's namespace, so both the loopback port and the bridge address are refused
+(probed directly, both `REFUSED`, while Postgres inside its own container logged
+`database system is ready to accept connections`). The run therefore shimmed the
+`docker` binary on the container's `PATH`: `run` was forwarded with
+`--network container:$(hostname)` and the `-p` flag dropped, and `port` answered
+`127.0.0.1:5432` directly. Postgres then shares the runner's own network namespace
+and the unmodified DSN works. **No test file was touched** — the shim lives only in
+the throwaway container.
+
+Two side findings, both recorded above in Known limitations:
+
+1. **`go.mod`'s `go 1.19` is below the real floor.** On a 1.19 toolchain
+   `tests/endpoint` does not build: `vendor/github.com/go-openapi/swag/string_bytes.go:7:29:
+   undefined: unsafe.StringData`. The detector run needed 1.23 (which is what the
+   Dockerfile already builds with); 1.20 is the minimal honest value, and raising
+   the directive to 1.23 would silently change loop-variable semantics module-wide.
+   Left for a deliberate decision rather than changed here.
+2. **A misleading first symptom.** Some early attempts failed at
+   `reading mapped port for ...: no public port '5432' published`, which reads like
+   a defect in `testdb.hostPort`. It is not: the container had started, and adding a
+   single extra fork between `docker run` and `docker port` made the lookup succeed
+   every time. It was a startup-timing artifact of the nested CLI/daemon pairing,
+   not reachable from the repo's own code path.
