@@ -1,0 +1,11 @@
+{
+  "FAVORITES_LIMIT_REACHED": "You have reached the maximum of 500 favorites. Remove one before adding another.",
+  "FAVORITE_NOT_FOUND": "Favorite not found",
+
+  "E-4-CMD-DTO-001": "Field {{.FieldName}} Cannot Empty",
+  "E-4-CMD-DTO-002": "Invalid Format in Field {{.FieldName}}",
+  "E-4-CMD-DTO-003": "{{.FieldName}} must following rule : {{.RuleName}} {{.Other}}",
+  "E-4-CMD-DTO-004": "Unknown data with this {{.FieldName}}",
+  "E-5-SBX-SRV-001": "Internal Server Error, Please contact our customer service",
+  "E-3-SBX-AUT-001": "Unauthorized"
+}

@@ -1,0 +1,10 @@
+# Local env. sample.env is the committed template.
+.env
+
+# Build output and runtime scratch.
+/bin/
+/temp/
+*.exe
+
+# vendor/ is committed on purpose — nexcommon is a private module, so CI cannot
+# fetch it and the image build needs it present.

@@ -1,0 +1,60 @@
+package error
+
+import (
+	stderrors "errors"
+
+	error2 "github.com/nexsoft-git/nexcommon/error"
+)
+
+// Business error codes. Declared separately so the bundle guard test can
+// reference the same string the sentinel is built from.
+const (
+	CodeFavoritesLimitReached = "FAVORITES_LIMIT_REACHED"
+	CodeFavoriteNotFound      = "FAVORITE_NOT_FOUND"
+)
+
+// One typed sentinel per business failure. Returning one of these is the only
+// way the real status/code/message reaches the client — any other error type is
+// coerced to a generic 500 by nexcommon's Formator.
+//
+// These carry no parameters, so they are safe to return as package-level vars:
+// the shared-sentinel data race only bites callers that use .Param(...), which
+// mutates the sentinel in place.
+var (
+	// ErrFavoritesLimitReached is REQ-007's clear error: the caller already has
+	// 500 favorites. Nothing is inserted and nothing is evicted.
+	ErrFavoritesLimitReached = error2.NewUnBundledErrorMessages(
+		422,
+		stderrors.New(CodeFavoritesLimitReached),
+		nil,
+	)
+
+	// ErrFavoriteNotFound is REQ-008's uniform 404 — returned identically when
+	// the row belongs to another user and when it does not exist at all, so the
+	// two cases are indistinguishable to the caller.
+	ErrFavoriteNotFound = error2.NewUnBundledErrorMessages(
+		404,
+		stderrors.New(CodeFavoriteNotFound),
+		nil,
+	)
+)
+
+// BundledCodes is every error code this service's common.error bundle must
+// carry: its own business codes, plus the nexcommon codes reachable through the
+// shared validator path. The service ships its own i18n bundles in place of
+// nexcommon's, so a code missing here renders as the raw code string to the
+// client with no error and no log line pointing at the gap.
+var BundledCodes = []string{
+	CodeFavoritesLimitReached,
+	CodeFavoriteNotFound,
+
+	// Rendered by nexcommon's shared tag validator and body decode.
+	"E-4-CMD-DTO-001", // empty required field
+	"E-4-CMD-DTO-002", // failed format (incl. regex, date)
+	"E-4-CMD-DTO-003", // failed rule (min/max/enum)
+	"E-4-CMD-DTO-004", // unknown data
+	// The formator's own default code for anything unexpected.
+	"E-5-SBX-SRV-001",
+	// Returned by the token validators.
+	"E-3-SBX-AUT-001",
+}
