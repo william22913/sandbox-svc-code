@@ -113,17 +113,18 @@ would be the only way this endpoint could answer differently. Documented in
 
 **`-race` runs, but not on this machine's toolchain.** `go test -race` here fails
 with `cgo: C compiler "gcc" not found` and there is no other C compiler on
-`PATH`, so the detector was run in a `golang:1.23` container instead: cgo on,
+`PATH`, so the detector was run in a container instead — at `golang:1.22`, the
+image the updated `golang-testing` standard pins for exactly this case: cgo on,
 `-mod=vendor`, the whole `./tests/...` tree, and `tests/db` against its real
 Postgres rather than a mock. Every package is clean.
 
 ```
-ok  github.com/william22913/sandbox-svc-code/tests            1.272s
-ok  github.com/william22913/sandbox-svc-code/tests/db         8.064s
-ok  github.com/william22913/sandbox-svc-code/tests/dto        1.029s
-ok  github.com/william22913/sandbox-svc-code/tests/endpoint   1.086s
-ok  github.com/william22913/sandbox-svc-code/tests/middleware 1.067s
-ok  github.com/william22913/sandbox-svc-code/tests/service    1.019s
+ok  github.com/william22913/sandbox-svc-code/tests            1.078s
+ok  github.com/william22913/sandbox-svc-code/tests/db         7.452s
+ok  github.com/william22913/sandbox-svc-code/tests/dto        1.021s
+ok  github.com/william22913/sandbox-svc-code/tests/endpoint   1.058s
+ok  github.com/william22913/sandbox-svc-code/tests/middleware 1.045s
+ok  github.com/william22913/sandbox-svc-code/tests/service    1.016s
 ```
 
 `TestAddCapHoldsUnderConcurrentRequests` — 8 concurrent adds for 1 free slot — is
@@ -136,8 +137,9 @@ then reading back the published host port, with the DSN hardcoded to
 `host=127.0.0.1`; on Docker Desktop a container nested inside another container
 cannot reach that published port at all, so the run shimmed the `docker` binary to
 give the spawned Postgres the runner's own network namespace and report the port
-directly. The tests were not modified — only the runner. Second, it had to be
-Go 1.23: on `golang:1.19` the suite does not build (next paragraph).
+directly. The tests were not modified — only the runner. Second, it could not have
+been Go 1.19: the suite does not build there at all (next paragraph), which is the
+`go.mod` defect below.
 
 **`go.mod` declares `go 1.19`, which is below the real floor.** Running the suite
 on a 1.19 toolchain fails in `tests/endpoint` with
@@ -149,6 +151,22 @@ toolchain) can fail to build a tree that is fine on the 1.23 the Dockerfile
 already uses. Left unchanged as written, since raising it to 1.23 would also
 silently switch loop-variable semantics across the whole module — the decision is
 worth making deliberately, and 1.20 is the minimal honest value.
+
+**Upstream has since raised that floor to 1.27.** nexcommon's own `go.mod` now
+declares `go 1.27` — `v0.3.68` and `v0.3.68-swagger` both do — and an older
+toolchain is refused outright, not warned about:
+
+```
+go: go.mod requires go >= 1.27 (running go 1.25.6; GOTOOLCHAIN=local)
+```
+
+So 1.20 is the floor for **this** pin (`v0.3.67-swagger` declares `go 1.16`); any
+bump past `v0.3.68` needs 1.27. The images exist (`golang:1.27`,
+`golang:1.27-alpine`), and nothing here is broken by staying put — no shipped code
+depends on a post-0.3.68 fix. Bumping would be cheap, though: the only goroutine
+closure in this repo is `tests/db/favorite_dao_test.go:366`, which already passes
+its loop variable as a parameter, so moving the directive from 1.19 to 1.27
+changes no loop-variable semantics in this code.
 
 **The swagger document drops `POST /v1/favorites`.** nexcommon's
 `NewHandleFuncParam` assigns a fresh method map for a path on every call
@@ -649,17 +667,19 @@ makes the type-hint placeholders the converter emits (`<long>`) usable as
 
 Requested after Part 6, and the one item every earlier part had to leave open:
 `go test -race` had never run on this tree. It still cannot run natively — there
-is no C compiler on this Windows machine — so it ran in a Linux container instead.
-The whole `./tests/...` tree is clean, `tests/db` included, against its real
-Postgres:
+is no C compiler on this Windows machine — so it ran in a Linux container instead,
+at `golang:1.22` (the spin-up rule is now written down in `golang-testing`: `-race`
+always runs via Docker, never bare on the host and never skipped when the host
+lacks a compiler). The whole `./tests/...` tree is clean, `tests/db` included,
+against its real Postgres:
 
 ```
-ok  github.com/william22913/sandbox-svc-code/tests            1.272s
-ok  github.com/william22913/sandbox-svc-code/tests/db         8.064s
-ok  github.com/william22913/sandbox-svc-code/tests/dto        1.029s
-ok  github.com/william22913/sandbox-svc-code/tests/endpoint   1.086s
-ok  github.com/william22913/sandbox-svc-code/tests/middleware 1.067s
-ok  github.com/william22913/sandbox-svc-code/tests/service    1.019s
+ok  github.com/william22913/sandbox-svc-code/tests            1.078s
+ok  github.com/william22913/sandbox-svc-code/tests/db         7.452s
+ok  github.com/william22913/sandbox-svc-code/tests/dto        1.021s
+ok  github.com/william22913/sandbox-svc-code/tests/endpoint   1.058s
+ok  github.com/william22913/sandbox-svc-code/tests/middleware 1.045s
+ok  github.com/william22913/sandbox-svc-code/tests/service    1.016s
 ```
 
 `TestAddCapHoldsUnderConcurrentRequests` (8 concurrent adds for 1 free slot) is now
@@ -683,13 +703,43 @@ Two side findings, both recorded above in Known limitations:
 
 1. **`go.mod`'s `go 1.19` is below the real floor.** On a 1.19 toolchain
    `tests/endpoint` does not build: `vendor/github.com/go-openapi/swag/string_bytes.go:7:29:
-   undefined: unsafe.StringData`. The detector run needed 1.23 (which is what the
-   Dockerfile already builds with); 1.20 is the minimal honest value, and raising
-   the directive to 1.23 would silently change loop-variable semantics module-wide.
-   Left for a deliberate decision rather than changed here.
+   undefined: unsafe.StringData`. The detector run needed at least 1.20; 1.20 is
+   the minimal honest value, and raising the directive to 1.22 or above would
+   silently change loop-variable semantics module-wide. Left for a deliberate
+   decision rather than changed here. Upstream has since gone further — see the
+   `go 1.27` note in Known limitations.
 2. **A misleading first symptom.** Some early attempts failed at
    `reading mapped port for ...: no public port '5432' published`, which reads like
    a defect in `testdb.hostPort`. It is not: the container had started, and adding a
    single extra fork between `docker run` and `docker port` made the lookup succeed
    every time. It was a startup-timing artifact of the nested CLI/daemon pairing,
    not reachable from the repo's own code path.
+
+### Upstream's HTTP-metrics fix — checked, and it does not retire our middleware
+
+The same upstream round fixed the bug this service's `middleware/metrics.go` exists
+to work around. nexcommon's HTTP middleware no longer hardcodes `200`: it wraps the
+writer in `NewLoggingResponseWriter` and observes `lrw.statusCode`, which defaults
+to `http.StatusOK` and is set by `WriteHeader`. Verified by reading the tag, not by
+reputation — `bec5fcd` on main, `b52f8fc` as the swagger line's own copy of it, and
+`v0.3.68-swagger` carries the latter (so the swagger-wired tag has the fix, even
+though the two commit ids differ).
+
+It still does not meet what `nexcommon-go-prometheus-standards` requires of this
+middleware, in the two places that matter here:
+
+- `usedPath, _ := mux.CurrentRoute(r).GetPathTemplate()` — for an unmatched request
+  `mux.CurrentRoute` is nil and the call panics, and the fallback it then takes is
+  `usedPath = r.URL.Path`, the unbounded-label case the standard says never to
+  label with. `routeTemplate` in this service returns a fixed `"unmatched"` instead.
+- `loggingResponseWriter` implements neither `Unwrap` nor `Flush`/`Hijack`, so
+  `http.ResponseController` cannot reach the real writer; our `statusRecorder`
+  exposes `Unwrap` for exactly that. The standard calls this out by name.
+
+No test in nexcommon covers that middleware at all — `NewLoggingResponseWriter` and
+`APIHist` appear in no `_test.go` file there. So the service keeps its own
+middleware, now for those two reasons rather than for the `200` bug. **If the pin
+ever moves to `v0.3.68` or later, the comment at the top of `middleware/metrics.go`
+must be rewritten** — it currently justifies the file by the hardcoded `200`, which
+is true of `v0.3.67-swagger` and false of anything after it. The reasoning above is
+what replaces it; the code itself needs no change either way.
