@@ -10,12 +10,12 @@ info:
     route acts on the calling user's own rows only; the user is taken from the
     access token, never from the request, so no route accepts a user id.
 
-    This document is hand-maintained. nexcommon's swagger generator
-    (`NewHandleFuncParam`) resets a path's method map on every registration, so
-    it emits only the last route registered on a shared path and drops
-    `POST /v1/favorites`. The service itself routes and tags all three
-    correctly — the generated document is the only thing that loses one. See
-    `docs/FEAT-001/dev-test-results.md`'s Known limitations.
+    Paths, methods and tags are emitted by nexcommon's own generator
+    (`GenerateSwaggerDocs`, served at `/swagger/swagger.yaml`), so they cannot
+    drift from the routes the service registers. What is authored on top of it
+    here is the response side: the `{success, header, payload}` envelope, the
+    per-status coverage, the business error codes, and examples taken from the
+    real DTOs — none of which the generator can see.
 
 servers:
   - url: http://localhost:{port}
@@ -24,9 +24,12 @@ servers:
       port:
         default: "8080"
 
+# One tag per entity, matching the code's own organization: every route in
+# `services/favorite/` carries `constanta.TagFavorite`, and the tag is what
+# postman-collection-generator's folderStrategy=Tags groups the collection by.
 tags:
   - name: Favorite
-    description: The calling user's personal favorites list.
+    description: The calling user's personal favorites list (`services/favorite/`).
 
 security:
   - bearerAuth: []

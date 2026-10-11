@@ -6,7 +6,7 @@
 // added, so the additions live here instead of in the JSON. Run after every
 // regeneration:
 //
-//   npx openapi-to-postmanv2 -s api/openapi.yaml -o postman/sandbox-svc.postman_collection.json -p -O folderStrategy=Tags
+//   npx openapi-to-postmanv2 -s api/openapi.yaml -o postman/collection.json -p -O folderStrategy=Tags
 //   node postman/enrich-collection.js
 //
 // The tests are deliberately structural only — a JSON body and a sane latency.
@@ -16,7 +16,7 @@
 const fs = require('fs')
 const path = require('path')
 
-const file = path.join(__dirname, 'sandbox-svc.postman_collection.json')
+const file = path.join(__dirname, 'collection.json')
 const collection = JSON.parse(fs.readFileSync(file, 'utf8'))
 
 const source = [

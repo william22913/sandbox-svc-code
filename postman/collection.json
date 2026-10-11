@@ -2,10 +2,10 @@
   "item": [
     {
       "name": "Favorite",
-      "description": "The calling user's personal favorites list.",
+      "description": "The calling user's personal favorites list (`services/favorite/`).",
       "item": [
         {
-          "id": "725fd746-ac98-4569-93d7-dbadbc0af39d",
+          "id": "e690d949-f241-4daf-a9cf-cdf41d7d87b7",
           "name": "Favorite an item",
           "request": {
             "name": "Favorite an item",
@@ -49,7 +49,7 @@
           },
           "response": [
             {
-              "id": "f735efb9-a8fd-46a9-97c9-6ad352c6567a",
+              "id": "49ad0b49-622e-445f-a802-ed9c44cccb67",
               "name": "The item is now in the caller's favorites.",
               "originalRequest": {
                 "url": {
@@ -106,7 +106,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "12f258c4-66db-4e12-9125-117da7ec67d4",
+              "id": "17f7e769-2d4d-4aa0-bbba-6d266032df9e",
               "name": "The request body failed validation.",
               "originalRequest": {
                 "url": {
@@ -163,7 +163,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "10a8566e-abdd-4a2c-a113-e64457c38ba1",
+              "id": "d922420b-d9b7-4a53-ab85-8e417f65dd15",
               "name": "No valid access token was supplied.",
               "originalRequest": {
                 "url": {
@@ -220,7 +220,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "60363383-3346-4471-8c08-f9af855ba699",
+              "id": "3c5714ef-2586-47cb-bf96-5de1e88d5004",
               "name": "For DELETE — no favorite of the caller's matches (never favorited, or\nbelongs to another user; the caller cannot tell which).\nFor POST — the item does not exist in the catalog.",
               "originalRequest": {
                 "url": {
@@ -277,7 +277,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "7667fd0c-4960-4194-8bc9-a22d042525d7",
+              "id": "b1fd4e63-78d0-4b87-945f-27152ab603df",
               "name": "The user already holds the maximum number of favorites.",
               "originalRequest": {
                 "url": {
@@ -334,7 +334,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "fb799b33-e6ce-446c-ab56-c550fbb3797e",
+              "id": "658ff40d-60b1-4a7a-b873-40b9bfc54d4f",
               "name": "An unexpected server-side failure.",
               "originalRequest": {
                 "url": {
@@ -397,7 +397,7 @@
           }
         },
         {
-          "id": "fb74bf5a-b75c-4c06-a708-cc55eb1c2159",
+          "id": "11b11e71-8f16-4903-a86f-832c82eb8642",
           "name": "List the calling user's favorites",
           "request": {
             "name": "List the calling user's favorites",
@@ -428,7 +428,7 @@
           },
           "response": [
             {
-              "id": "7ec0af04-fd98-47f0-a5d6-5ed8beb12a47",
+              "id": "50baa277-1cc8-4c8b-88b3-d338cc246079",
               "name": "The caller's favorites, possibly empty.",
               "originalRequest": {
                 "url": {
@@ -472,7 +472,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "164ff021-8010-4e1c-9424-ee2b117eb2a4",
+              "id": "aca13625-0811-4ede-aa0e-23f069449d53",
               "name": "No valid access token was supplied.",
               "originalRequest": {
                 "url": {
@@ -516,7 +516,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "2251d4df-d7c4-4f00-b44b-ae7da87c4d2e",
+              "id": "cec26c11-b7fe-4fcf-865b-55382985c6ab",
               "name": "An unexpected server-side failure.",
               "originalRequest": {
                 "url": {
@@ -566,7 +566,7 @@
           }
         },
         {
-          "id": "bb913f01-ca87-418f-9798-23d56fc20612",
+          "id": "df926ee0-12e9-4fa2-8424-550ae615a9e4",
           "name": "Un-favorite an item",
           "request": {
             "name": "Un-favorite an item",
@@ -609,7 +609,7 @@
           },
           "response": [
             {
-              "id": "dad72d59-e840-486d-8644-5ce514fe5042",
+              "id": "f2fb8d84-ed5d-4f20-97b5-029db66a9f96",
               "name": "The item is no longer in the caller's favorites.",
               "originalRequest": {
                 "url": {
@@ -665,7 +665,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "b877ce0c-c3f4-4d86-9109-0d3b7a7decf4",
+              "id": "2b717b6c-4733-4bb3-bcfe-0aeadba43e7d",
               "name": "No valid access token was supplied.",
               "originalRequest": {
                 "url": {
@@ -721,7 +721,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "a36dad78-2733-4a99-a176-f4d21e43e9c7",
+              "id": "90d895d4-19b3-4040-b359-622f3d53af8e",
               "name": "For DELETE — no favorite of the caller's matches (never favorited, or\nbelongs to another user; the caller cannot tell which).\nFor POST — the item does not exist in the catalog.",
               "originalRequest": {
                 "url": {
@@ -777,7 +777,7 @@
               "_postman_previewlanguage": "json"
             },
             {
-              "id": "68e84279-93cb-429b-9b35-6140a5adb59c",
+              "id": "9a42c1cb-3d69-4f4f-907e-6c8619d980b8",
               "name": "An unexpected server-side failure.",
               "originalRequest": {
                 "url": {
@@ -888,11 +888,11 @@
     }
   ],
   "info": {
-    "_postman_id": "a83a9f2c-452c-4b71-8c1f-488c5fa3fc97",
+    "_postman_id": "d802b4e0-619a-41d3-a09f-403f786a9d41",
     "name": "sandbox-svc",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
     "description": {
-      "content": "sandbox-svc — the favorite-items feature (FEAT-001).\n\nThree routes: favorite an item, list your favorites, un-favorite one. Every\nroute acts on the calling user's own rows only; the user is taken from the\naccess token, never from the request, so no route accepts a user id.\n\nThis document is hand-maintained. nexcommon's swagger generator\n(`NewHandleFuncParam`) resets a path's method map on every registration, so\nit emits only the last route registered on a shared path and drops\n`POST /v1/favorites`. The service itself routes and tags all three\ncorrectly — the generated document is the only thing that loses one. See\n`docs/FEAT-001/dev-test-results.md`'s Known limitations.\n",
+      "content": "sandbox-svc — the favorite-items feature (FEAT-001).\n\nThree routes: favorite an item, list your favorites, un-favorite one. Every\nroute acts on the calling user's own rows only; the user is taken from the\naccess token, never from the request, so no route accepts a user id.\n\nPaths, methods and tags are emitted by nexcommon's own generator\n(`GenerateSwaggerDocs`, served at `/swagger/swagger.yaml`), so they cannot\ndrift from the routes the service registers. What is authored on top of it\nhere is the response side: the `{success, header, payload}` envelope, the\nper-status coverage, the business error codes, and examples taken from the\nreal DTOs — none of which the generator can see.\n",
       "type": "text/plain"
     }
   }

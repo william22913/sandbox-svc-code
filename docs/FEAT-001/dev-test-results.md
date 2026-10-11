@@ -126,7 +126,8 @@ test with `-race`.
 other and only the last registered survives. The route is registered, routed
 and tagged correctly; it is the generated document that loses it. Pinned by
 `TestCollectionPathDocumentsOnlyOneMethod`, which fails once the library is
-fixed. The OpenAPI artifact is hand-corrected in Part 6.
+fixed. `TestCollectionPathDocumentsOnlyOneMethod` pinned it, and the OpenAPI
+artifact was hand-corrected in Part 6 to put the route back.
 
 > **Resolved in the v0.3.67-swagger bump.** `NewHandleFuncParam` now guards the
 > assignment (`if SwaggerPath[path] == nil`, `param.go:21`), so the write is
@@ -298,9 +299,9 @@ service — not just the handler layer. Diff from the Part 5 checkpoint:
 | `Dockerfile` | Multi-stage, `-mod=vendor`, non-root `app` user, `i18n/` copied into the runtime stage (the bundles are data, not compiled in). |
 | `docker-compose.yml` | Postgres 16 + Redis 7 + the app, both dependencies gated by `condition: service_healthy`. |
 | `sql_migrations/seed/1_sandbox_seed.sql` | The fixture `config/config.go:70` points at; idempotent. |
-| `api/openapi.yaml` | OpenAPI 3.1, hand-authored. Its hand-correction was compensating for a library bug that v0.3.67-swagger fixed (see below), so it is no longer load-bearing — the artifact is simply ours now. |
-| `postman/sandbox-svc.postman_collection.json` | Generated from the above. |
-| `postman/local.postman_environment.json` | `baseUrl` + `apiKey` + `item_id`. |
+| `api/openapi.yaml` | OpenAPI 3.1. Paths, methods and tags come from nexcommon's generator; the response side (envelope, per-status coverage, error codes, examples) is authored on top of it. See the second re-check below. |
+| `postman/collection.json` | Generated from the above with `folderStrategy=Tags` — one folder per entity. |
+| `postman/environment.local.json` | `baseUrl` + `apiKey` + `item_id`. |
 | `postman/enrich-collection.js` | Deterministic post-processor re-applied after every regeneration. |
 
 **Two tool defects worked around, both recorded rather than hidden.**
@@ -552,3 +553,64 @@ my_app_http_hist_count{method="POST",path="/v1/favorites",status="404"} 1
 
 Vendor grew by 14 files (2806 → 2820), still ~37 MB — the two versions are close,
 so the bump is a small delta rather than a re-vendor of the world.
+
+## Second standard re-check: the API-artifact rules
+
+The two doc-generator skills were updated after the bump, and both now state
+their previously-implicit expectations as rules. Re-read against this repo's
+artifacts:
+
+**Every operation must carry a `tags:` entry naming its owning entity, and the
+tag must correspond to how the code is organized.** Already held, and it is
+nexcommon doing it rather than a post-process: `.Tags(constanta.TagFavorite)` on
+each `WrapService` call, and the entity is `services/favorite/`. The tag is not
+decoration — it is the entire input to the collection's folder grouping, so an
+operation that loses it drops out of its folder silently instead of failing. The
+spec now says so at its `tags:` block.
+
+**The fixed default locations.** The spec was already at `api/openapi.yaml`. The
+collection and environment were not at the skills' fixed names — they were
+`postman/sandbox-svc.postman_collection.json` and
+`postman/local.postman_environment.json`, which is Postman's own naming, not a
+pre-existing project convention this repo had (FEAT-001 is the first thing to
+exist here). Renamed to `postman/collection.json` and
+`postman/environment.local.json`; `enrich-collection.js` and the table above
+follow.
+
+**The collection is a build artifact, regenerated from the spec.** Re-ran the
+converter rather than editing the JSON:
+
+```
+openapi2postmanv2 -s api/openapi.yaml -o postman/collection.json -p -O folderStrategy=Tags
+node postman/enrich-collection.js
+```
+
+Result verified rather than assumed: **one folder**, named after the tag, holding
+exactly the three requests — one folder per entity, which is the check the
+Postman skill asks for. Diffing the regenerated file against the committed one,
+excluding the regenerator's random UUIDs, shows the request surface is
+**byte-identical**; the only changes are the two description strings the spec
+edit just made. The earlier green Newman run therefore still stands as the
+verification of these requests, and was not repeated for a description-only
+change.
+
+**New guard: `TestOpenAPISpecMatchesRegisteredRoutes`.** The "never let it drift"
+rule had nothing enforcing it — the spec is a separate file from the routes, so
+a route added to the endpoint layer and forgotten in the spec would ship a
+document that lies, and the reverse would document an endpoint that 404s. The
+test walks `api/openapi.yaml` and compares it with `SwaggerContainer` (built by
+the real `RegisterEndpoint`), in both directions, and additionally requires
+exactly one tag per operation that is declared in the document's own `tags:`
+list. Mutation-checked, since a guard that cannot fail is worse than none:
+
+| Mutation | Result |
+|---|---|
+| A `/v1/ghost` operation added to the spec | `GET /v1/ghost is documented but not registered` |
+| DELETE stripped of its `tags:` entry | `DELETE /v1/favorites/{item_id} carries 0 tags, want exactly 1` |
+
+**One tool note.** The Postman skill's command passes
+`requestParametersResolution=Example`; the installed converter build rejects that
+key (`Warning: Invalid option supplied`), so the working command uses
+`folderStrategy=Tags` alone. The `enrich-collection.js` post-processor is what
+makes the type-hint placeholders the converter emits (`<long>`) usable as
+`{{item_id}}`.

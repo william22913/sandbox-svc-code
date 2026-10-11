@@ -12,6 +12,9 @@ package endpoint
 
 import (
 	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/gorilla/mux"
@@ -19,6 +22,7 @@ import (
 	"github.com/nexsoft-git/nexcommon/docs/swagger"
 	"github.com/nexsoft-git/nexcommon/util/validator/basic_validator"
 	"github.com/nexsoft-git/nexcommon/util/validator/tag_validator"
+	"gopkg.in/yaml.v3"
 
 	"github.com/william22913/sandbox-svc-code/constanta"
 	"github.com/william22913/sandbox-svc-code/endpoint/favorite_endpoint"
@@ -141,6 +145,86 @@ func methodNames(methods swagger.SwaggerControllerMethods) []string {
 		names = append(names, name)
 	}
 	return names
+}
+
+// TestOpenAPISpecMatchesRegisteredRoutes — api/openapi.yaml is the published
+// contract; nexcommon's generator is what actually knows the routes. The two
+// must not drift: a route added here and forgotten in the spec ships a document
+// that lies about the API, and a spec entry with no route behind it documents an
+// endpoint that 404s.
+//
+// Tags are asserted alongside paths because they are load-bearing downstream —
+// postman-collection-generator groups the collection by them
+// (`folderStrategy=Tags`), so an operation that loses its tag silently drops out
+// of its folder instead of failing loudly. Every operation must therefore carry
+// exactly one tag, and that tag must also be declared in the document's own
+// top-level `tags:` list.
+func TestOpenAPISpecMatchesRegisteredRoutes(t *testing.T) {
+	register()
+
+	raw, err := os.ReadFile(filepath.Join("..", "..", "api", "openapi.yaml"))
+	if err != nil {
+		t.Fatalf("reading api/openapi.yaml: %v", err)
+	}
+
+	var doc struct {
+		Tags  []struct{ Name string } `yaml:"tags"`
+		Paths map[string]map[string]struct {
+			Tags []string `yaml:"tags"`
+		} `yaml:"paths"`
+	}
+	if err := yaml.Unmarshal(raw, &doc); err != nil {
+		t.Fatalf("parsing api/openapi.yaml: %v", err)
+	}
+
+	declared := map[string]bool{}
+	for _, tag := range doc.Tags {
+		declared[tag.Name] = true
+	}
+
+	documented := map[string]map[string]bool{}
+	for path, entries := range doc.Paths {
+		for name, op := range entries {
+			method := strings.ToLower(name)
+			if !httpMethods[method] {
+				continue // a path-level key that is not an operation
+			}
+			if len(op.Tags) != 1 {
+				t.Errorf("%s %s carries %d tags, want exactly 1", strings.ToUpper(method), path, len(op.Tags))
+			}
+			for _, tag := range op.Tags {
+				if !declared[tag] {
+					t.Errorf("%s %s uses tag %q, which the tags: list does not declare", strings.ToUpper(method), path, tag)
+				}
+			}
+			if documented[path] == nil {
+				documented[path] = map[string]bool{}
+			}
+			documented[path][method] = true
+		}
+	}
+
+	for path, methods := range swagger.SwaggerContainer.SwaggerPath {
+		for method := range methods {
+			if !documented[path][strings.ToLower(method)] {
+				t.Errorf("%s %s is registered but missing from api/openapi.yaml", strings.ToUpper(method), path)
+			}
+		}
+	}
+	for path, methods := range documented {
+		for method := range methods {
+			if _, ok := swagger.SwaggerContainer.SwaggerPath[path][method]; !ok {
+				t.Errorf("%s %s is documented but not registered", strings.ToUpper(method), path)
+			}
+		}
+	}
+}
+
+// httpMethods distinguishes an operation key from a path-level one (such as
+// `parameters`) when walking the spec's paths.
+var httpMethods = map[string]bool{
+	"get": true, "post": true, "put": true, "patch": true,
+	"delete": true, "head": true, "options": true, "trace": true,
 }
 
 func contains(haystack []string, needle string) bool {
