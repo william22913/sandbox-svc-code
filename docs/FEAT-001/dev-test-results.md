@@ -19,7 +19,7 @@ that never ran those tests — read the output.
 
 | # | Point | Files | Tests |
 |---|---|---|---|
-| 1 | Schema + migrations (`favorite_items`, `users`, `catalog_items`) | `migrations/main/*.sql` | `tests/db` (they run against it) |
+| 1 | Schema + migrations (`favorite_items`, `users`, `catalog_items`) | `sql_migrations/main/*.sql` | `tests/db` (they run against it) |
 | 2 | Sentinels + bundles | `error/error.go`, `i18n/common/error/en-US.json`, `constanta/` | `tests/bundle_coverage_test.go` |
 | 3 | DAO | `dao/favorite_dao.go` | `tests/db` |
 | 4 | Input DTO + validation | `dto/in/favorite.go` | `tests/dto` |
@@ -177,7 +177,7 @@ Two minor notes, both recorded rather than fixed:
 - `tests/testdb/testdb.go:33` — the test container's password is the Postgres
   image's public default on an ephemeral loopback-only throwaway database. Not
   a secret leak; left as-is deliberately. Optional hygiene only.
-- `migrations/main/2_favorite_items.sql` — the 500 cap has no schema
+- `sql_migrations/main/2_favorite_items.sql` — the 500 cap has no schema
   constraint, only the application-level lock-plus-count. Correct and the only
   tractable design for a per-user row count, and safe because this DAO is the
   sole writer of `favorite_items`.
@@ -221,9 +221,9 @@ Caveats, in order of weight:
    taken against the diff at that time and is left as recorded.
 2. **No CI workflow.** `.github/workflows/` is absent. Per the audit's own
    rubric a green CI is assumed by a "strong" score; there is none to be green.
-3. **`config/config.go:70` references `migrations/seed`, which does not
+3. **`config/config.go:70` references `sql_migrations/seed`, which does not
    exist.** ~~Nothing in the repo provides it.~~ **Resolved in Part 6** — the
-   fixture now exists at `migrations/seed/1_sandbox_seed.sql`.
+   fixture now exists at `sql_migrations/seed/1_sandbox_seed.sql`.
 4. **`-race` could not run locally** (see Known limitations). CI should run the
    cap's concurrency test under the race detector.
 
@@ -291,7 +291,7 @@ service — not just the handler layer. Diff from the Part 5 checkpoint:
 |---|---|
 | `Dockerfile` | Multi-stage, `-mod=vendor`, non-root `app` user, `i18n/` copied into the runtime stage (the bundles are data, not compiled in). |
 | `docker-compose.yml` | Postgres 16 + Redis 7 + the app, both dependencies gated by `condition: service_healthy`. |
-| `migrations/seed/1_sandbox_seed.sql` | The fixture `config/config.go:70` points at; idempotent. |
+| `sql_migrations/seed/1_sandbox_seed.sql` | The fixture `config/config.go:70` points at; idempotent. |
 | `api/openapi.yaml` | OpenAPI 3.1, hand-authored (see the generator bug below). |
 | `postman/sandbox-svc.postman_collection.json` | Generated from the above. |
 | `postman/local.postman_environment.json` | `baseUrl` + `apiKey` + `item_id`. |
@@ -381,3 +381,93 @@ stays the service's real one.
   should run it under `-race`.
 - **No CI workflow** (`.github/workflows/` absent), unchanged from Part 5.
 - The Redis token fixture is still seeded by hand; the Postgres fixture now exists.
+
+## New-standard re-check (post-Part-6)
+
+The `nexcraft` plugin standard was updated after this feature landed: three
+mechanical scripts now exist under the plugin's `scripts/` (`detect_go_project_layout.py`,
+`verify_generated_go_layout.py`, `verify_bundle_coverage.py`) where before there
+were none. `/go-dev`'s Part 4 now requires running the verifiers after any point
+that wrote Go files, and states they exist *because* of the two failures this
+repo hit — an endpoint file at the module root and an invented auth error code.
+This section re-audits the committed feature against them.
+
+### `verify_generated_go_layout.py` — FAILED, then fixed
+
+First run reported:
+
+```
+FAILED — the following files must be fixed before this task is done:
+  - endpoint file not inside a '*_endpoint/' directory:
+    server_config\server_endpoint.go (parent dir: 'server_config')
+```
+
+`server_config/server_endpoint.go` is the composition root's route-registration
+file (`InitEndpoint()`), not an entity endpoint — the check's name-suffix
+heuristic can't tell those apart, and it is right that it can't: the scaffold
+this project follows names the composition root's endpoint file `endpoint.go`.
+Renamed the three composition-root wiring files to that scaffold's canonical
+names — `server_dao.go` → `dao.go`, `server_services.go` → `service.go`,
+`server_endpoint.go` → `endpoint.go`. Pure renames: same package, same exported
+symbols, no import changes.
+
+Re-run: **OK — 28 generated files, no misplaced endpoint files, no leaked
+template artifacts.**
+
+### `verify_bundle_coverage.py` — cannot run against the pinned nexcommon
+
+```
+ERROR: `go run` failed while collecting registered codes ...
+.\tmp..._verify_bundle_coverage_check.go:11:27: undefined: nexerr.AllCodes
+```
+
+The script derives the required code set from `error.AllCodes()`, a function
+added to nexcommon *for this purpose*. The pinned `v0.3.57-swagger-alpha` predates
+it — the vendored `error` package exports only `NewErrorFormator`,
+`NewUnBundledErrorMessages` and `NewErrorMessageParam`. The script therefore
+exits 2 before it can check anything; wiring it up would need a nexcommon bump,
+which is a dependency decision outside this feature's code.
+
+The equivalent coverage is held locally by the guard tests, which together cover
+exactly the two halves `AllCodes()` would return:
+
+| Source | Mechanism | Count |
+|---|---|---|
+| nexcommon's own sentinels | `TestEveryNexcommonErrorCodeIsBundled` derives codes from the vendored `error/message.go` by regex | 22 |
+| this service's sentinels + the formator default | `TestEveryErrorCodeIsBundled` walks `error.BundledCodes` | 4 |
+
+All four pass; the bundle carries 26 keys. The derivation is deliberately from
+the vendored source rather than a hand-written list, which is the same property
+`AllCodes()` gives the script — see the Part 6 entry above for the bug that
+proved why.
+
+### `detect_go_project_layout.py` — reconnaissance, two real gaps closed
+
+Advisory only (it names conventions; it does not gate). It reported three items
+this pass could act on, and two that are its own gaps:
+
+- **`sql_migrations/`: not present** → fixed. The repo used `migrations/`; the
+  house layout names `sql_migrations/` and the feature docs are silent on it, so
+  the house name applies. Renamed the directory (keeping the internal
+  `main/` + `seed/` split) and updated every reference: `main.go`, the DAO test
+  helper, both `Dockerfile` stages, `docker-compose.yml`'s seed mount and the
+  `config.go` comment. Detector now reports `sql_migrations/: subfolder-per-target
+  shape, targets: main, seed`.
+- **Kong statement: not found** → added to `CLAUDE.md`. The service is not behind
+  Kong, so every route uses the plain `UserAccessValidator()`; that is now
+  written down rather than left for the next reader to infer.
+- **Validator usage: "none of the known validator names matched"** → a false
+  positive. The detector's name list omits the plain `UserAccessValidator`, which
+  the pinned nexcommon *does* provide (`controller/user_access.go:47`) and which
+  all three routes use. No code change; the `CLAUDE.md` line above now answers it.
+- **`service/`: not present** and **composition root not found** → also its own
+  gaps: this repo uses `services/` (the name the layout skill gives) and
+  `server_config/` (which the config standard names as a real-project convention).
+  Neither is a deviation.
+
+### Guard
+
+`gofmt` clean; `go vet -mod=vendor ./...` and `go build -mod=vendor ./...` pass;
+`go test -mod=vendor ./tests/...` all green, including `tests/db` (7.6s against a
+real Postgres — which also re-verifies the renamed migration path the test helper
+globs).

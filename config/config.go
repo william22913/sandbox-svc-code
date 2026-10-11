@@ -67,7 +67,7 @@ type Credentials struct {
 }
 
 // AuthorizationAPI is only consulted by UserAccessValidator on a Redis token
-// cache-miss — see the seed fixture in migrations/seed, which pre-populates the
+// cache-miss — see the seed fixture in sql_migrations/seed, which pre-populates the
 // token key so this path never fires in the sandbox.
 type AuthorizationAPI struct {
 	Host        string `envconfig:"host" default:""`

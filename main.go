@@ -32,7 +32,7 @@ func main() {
 
 	if _, err := dbmigration.NewDBMigration().DbMigratePostresql(
 		attribute.DBConnection,
-		"migrations/main",
+		"sql_migrations/main",
 		cfg.Postgresql.DefaultSchema,
 		migrate.Up,
 	); err != nil {

@@ -25,7 +25,7 @@ COPY endpoint/ endpoint/
 COPY error/ error/
 COPY i18n/ i18n/
 COPY middleware/ middleware/
-COPY migrations/ migrations/
+COPY sql_migrations/ sql_migrations/
 COPY router/ router/
 COPY server_config/ server_config/
 COPY services/ services/
@@ -49,7 +49,7 @@ COPY --from=build /src/i18n i18n/
 
 # Read at startup by main.go's dbmigration call, so they must be present in the
 # runtime image, not only in the build stage.
-COPY --from=build /src/migrations migrations/
+COPY --from=build /src/sql_migrations sql_migrations/
 
 # config's Server.Temp default (./temp) is used for temp files; it must exist and
 # be writable by the unprivileged user.

@@ -149,7 +149,7 @@ func hostPort(name string) (string, error) {
 // each migration down to its Up section. Running the real files keeps the test
 // honest about the schema the DAO is written against.
 func applyMigrations(db *sql.DB) error {
-	paths, err := filepath.Glob(filepath.Join("..", "..", "migrations", "main", "*.sql"))
+	paths, err := filepath.Glob(filepath.Join("..", "..", "sql_migrations", "main", "*.sql"))
 	if err != nil {
 		return fmt.Errorf("finding migration files: %w", err)
 	}
