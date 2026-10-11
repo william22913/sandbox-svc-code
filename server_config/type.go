@@ -3,6 +3,7 @@ package server_config
 import (
 	"database/sql"
 
+	"github.com/go-redis/redis/v7"
 	"github.com/nexsoft-git/nexcommon/bundles"
 	http_validator "github.com/nexsoft-git/nexcommon/controller/http"
 	errors "github.com/nexsoft-git/nexcommon/error"
@@ -13,7 +14,6 @@ import (
 	"github.com/nexsoft-git/nexcommon/util/validator/basic_validator"
 	"github.com/nexsoft-git/nexcommon/util/validator/get_list_validator"
 	"github.com/nexsoft-git/nexcommon/util/validator/tag_validator"
-	"github.com/go-redis/redis/v7"
 
 	"github.com/william22913/sandbox-svc-code/config"
 )

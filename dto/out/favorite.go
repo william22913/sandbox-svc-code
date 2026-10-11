@@ -20,6 +20,22 @@ type FavoriteItem struct {
 	FavoritedAt time.Time `json:"favorited_at"`
 }
 
+// AddFavoriteResponse is POST /favorites' payload.
+//
+// AlreadyFavorited is what makes REQ-005's idempotency observable to a client:
+// favoriting an item that was already in the list is a success with this true,
+// not an error and not a second row.
+type AddFavoriteResponse struct {
+	ItemID           int64 `json:"item_id"`
+	AlreadyFavorited bool  `json:"already_favorited"`
+}
+
+// RemoveFavoriteResponse is DELETE /favorites/{item_id}'s payload, echoed back
+// so the caller can confirm which item left the list.
+type RemoveFavoriteResponse struct {
+	ItemID int64 `json:"item_id"`
+}
+
 // FavoriteList is GET /favorites' payload. A wrapper rather than a bare array
 // so FEAT-002's per-favorite note (and the deferred sort/filter pass) can add a
 // sibling field or a page envelope without changing this response's shape.
