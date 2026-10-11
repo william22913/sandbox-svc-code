@@ -246,6 +246,70 @@ func TestListReportsDiscontinuedItemAsUnavailable(t *testing.T) {
 	}
 }
 
+// TestRemovingADiscontinuedItemStillWorks — REQ-004 / TC-008. The remove is
+// keyed on the favorite_items row alone, so a discontinued item is removable
+// like any other; nothing about it consults the catalog.
+func TestRemovingADiscontinuedItemStillWorks(t *testing.T) {
+	testdb.Truncate(t, db)
+	seedUser(t, 1)
+	seedItem(t, 10, true)
+
+	if _, err := favorite.Add(1, 10, 500); err != nil {
+		t.Fatalf("favorite the item: %v", err)
+	}
+	exec(t, `UPDATE catalog_items SET is_available = FALSE WHERE id = 10`)
+
+	removed, err := favorite.Remove(1, 10)
+	if err != nil {
+		t.Fatalf("Remove a discontinued favorite: %v", err)
+	}
+	if !removed {
+		t.Fatal("Remove reported nothing removed for a discontinued favorite")
+	}
+	if got := countFavorites(t, 1); got != 0 {
+		t.Fatalf("favorite count = %d, want 0", got)
+	}
+}
+
+// TestUnfavoritingAtCapFreesASlot — REQ-007 with REQ-003 / TC-014. The cap is
+// on the live count, not on a lifetime total, so dropping one favorite must let
+// the next distinct one in.
+func TestUnfavoritingAtCapFreesASlot(t *testing.T) {
+	testdb.Truncate(t, db)
+	seedUser(t, 1)
+	const limit = 3
+	for i := int64(10); i < 10+limit; i++ {
+		seedItem(t, i, true)
+		if _, err := favorite.Add(1, i, limit); err != nil {
+			t.Fatalf("seeding favorite %d: %v", i, err)
+		}
+	}
+
+	seedItem(t, 99, true)
+	if outcome, err := favorite.Add(1, 99, limit); err != nil || outcome != dao.AddLimitReached {
+		t.Fatalf("setup: Add at cap = (%v, %v), want AddLimitReached", outcome, err)
+	}
+
+	removed, err := favorite.Remove(1, 10)
+	if err != nil {
+		t.Fatalf("Remove to free a slot: %v", err)
+	}
+	if !removed {
+		t.Fatal("Remove reported nothing removed")
+	}
+
+	outcome, err := favorite.Add(1, 99, limit)
+	if err != nil {
+		t.Fatalf("Add after freeing a slot: %v", err)
+	}
+	if outcome != dao.AddInserted {
+		t.Fatalf("Add after freeing a slot outcome = %v, want AddInserted", outcome)
+	}
+	if got := countFavorites(t, 1); got != limit {
+		t.Fatalf("favorite count = %d, want %d", got, limit)
+	}
+}
+
 // TestListIsEmptyNotNilWithoutFavorites — TC-004. An empty list must serialise
 // as [] rather than null.
 func TestListIsEmptyNotNilWithoutFavorites(t *testing.T) {
