@@ -113,10 +113,12 @@ would be the only way this endpoint could answer differently. Documented in
 
 **`-race` runs, but not on this machine's toolchain.** `go test -race` here fails
 with `cgo: C compiler "gcc" not found` and there is no other C compiler on
-`PATH`, so the detector was run in a container instead — at `golang:1.22`, the
-image the updated `golang-testing` standard pins for exactly this case: cgo on,
-`-mod=vendor`, the whole `./tests/...` tree, and `tests/db` against its real
-Postgres rather than a mock. Every package is clean.
+`PATH`, so the detector runs in a container instead — the `-race`-via-Docker rule
+the updated `golang-testing` standard now writes down: cgo on, `-mod=vendor`, the
+whole `./tests/...` tree, and `tests/db` against its real Postgres rather than a
+mock. It first ran on `golang:1.22`; after the bump to `v0.3.68-swagger` it runs
+on `golang:1.27`, which the module's `go 1.27` directive makes mandatory — 1.22
+refuses to build it at all. Every package is clean on both.
 
 ```
 ok  github.com/william22913/sandbox-svc-code/tests            1.078s
@@ -167,6 +169,13 @@ depends on a post-0.3.68 fix. Bumping would be cheap, though: the only goroutine
 closure in this repo is `tests/db/favorite_dao_test.go:366`, which already passes
 its loop variable as a parameter, so moving the directive from 1.19 to 1.27
 changes no loop-variable semantics in this code.
+
+> **Resolved in the v0.3.68-swagger bump.** The directive now reads `go 1.27` and
+> the pin is `v0.3.68-swagger`, so the declaration and the real floor finally
+> agree; the Dockerfile builds from `golang:1.27-alpine`. The loop-variable
+> exposure predicted above was re-checked against the raised directive and is
+> still nil — the one closure passes its variable as a parameter. See the bump
+> section at the end of this document.
 
 **The swagger document drops `POST /v1/favorites`.** nexcommon's
 `NewHandleFuncParam` assigns a fresh method map for a path on every call
@@ -280,7 +289,8 @@ Caveats, in order of weight:
    exist.** ~~Nothing in the repo provides it.~~ **Resolved in Part 6** — the
    fixture now exists at `sql_migrations/seed/1_sandbox_seed.sql`.
 4. ~~**`-race` could not run locally.**~~ **Resolved in Part 7** — the whole
-   `./tests/...` tree, `tests/db` included, is race-clean under `golang:1.23`.
+   `./tests/...` tree, `tests/db` included, is race-clean; re-run on `golang:1.27`
+   after the library bump, since the raised directive makes 1.22 unusable.
 
 ### Spec compliance
 
@@ -434,8 +444,9 @@ stays the service's real one.
 **Limitations, updated.**
 
 - **`-race` now runs** (in a container, for want of a local gcc) — the full
-  `./tests/...` tree including the DB-backed cap test is race-clean. `go.mod`'s
-  `go 1.19` directive is now the standing defect instead; see Known limitations.
+  `./tests/...` tree including the DB-backed cap test is race-clean, on
+  `golang:1.27` since the library bump. `go.mod`'s `go 1.19` directive was the
+  standing defect here; it now reads `go 1.27`, matching the bumped pin's floor.
 - **No CI workflow** (`.github/workflows/` absent), unchanged from Part 5.
 - The Redis token fixture is still seeded by hand; the Postgres fixture now exists.
 
@@ -668,10 +679,10 @@ makes the type-hint placeholders the converter emits (`<long>`) usable as
 Requested after Part 6, and the one item every earlier part had to leave open:
 `go test -race` had never run on this tree. It still cannot run natively — there
 is no C compiler on this Windows machine — so it ran in a Linux container instead,
-at `golang:1.22` (the spin-up rule is now written down in `golang-testing`: `-race`
-always runs via Docker, never bare on the host and never skipped when the host
-lacks a compiler). The whole `./tests/...` tree is clean, `tests/db` included,
-against its real Postgres:
+on `golang:1.22` at the time (the spin-up rule is now written down in
+`golang-testing`: `-race` always runs via Docker, never bare on the host and never
+skipped when the host lacks a compiler). The whole `./tests/...` tree is clean,
+`tests/db` included, against its real Postgres:
 
 ```
 ok  github.com/william22913/sandbox-svc-code/tests            1.078s
@@ -738,8 +749,64 @@ middleware, in the two places that matter here:
 
 No test in nexcommon covers that middleware at all — `NewLoggingResponseWriter` and
 `APIHist` appear in no `_test.go` file there. So the service keeps its own
-middleware, now for those two reasons rather than for the `200` bug. **If the pin
-ever moves to `v0.3.68` or later, the comment at the top of `middleware/metrics.go`
-must be rewritten** — it currently justifies the file by the hardcoded `200`, which
-is true of `v0.3.67-swagger` and false of anything after it. The reasoning above is
-what replaces it; the code itself needs no change either way.
+middleware, now for those two reasons rather than for the `200` bug. The comment at
+the top of `middleware/metrics.go` still justified the file by the hardcoded `200`,
+so it was rewritten in the bump below to lead with the two gaps instead; the code
+itself needed no change either way.
+
+## nexcommon bump to v0.3.68-swagger
+
+`nexcommon v0.3.67-swagger → v0.3.68-swagger`, and with it the module's own
+directive, `go 1.19 → go 1.27`. `v0.3.68-swagger` is the swagger-wired tag at the
+new floor: `v0.3.68` on main carries the metrics fix but no swagger wiring, and
+`v0.3.68-swagger` (`origin/swagger` HEAD, `1f11580`) carries both — the metrics fix
+as its own commit, `b52f8fc`, "Bump Go to 1.27; fix HTTP metrics always recording
+status 200".
+
+**The blast radius is three files.** By tag-to-tag `git diff`, only `go.mod`,
+`go.sum` and `http/server/middleware/middleware.go` differ between the two
+versions. Nothing this service calls changed shape; no source outside `go.mod`,
+the Dockerfile and the middleware comment was touched.
+
+**`go.sum` shrank by 654 lines and `vendor/` by three files.** The tidy dropped
+test fixtures the newer module graph no longer needs —
+`vendor/github.com/mvrilo/go-redoc/testdata/spec.json` and
+`vendor/github.com/rubenv/sql-migrate/test-migrations/{1_initial,2_record}.sql` —
+plus `vendor/modules.txt`'s two lines for this module (`go 1.16` → `go 1.27`).
+The vendored `nexcommon/http/server/middleware/middleware.go` is the only vendored
+code that changed, and it is the fix:
+`lrw := NewLoggingResponseWriter(w)` → `next.ServeHTTP(lrw, r)` →
+`strconv.Itoa(lrw.statusCode)`.
+
+**`golang-testing`'s `-race` example is `golang:1.22`, and it cannot run this tree
+any more.** A `go 1.27` directive is enforced, not advisory: 1.22 refuses to build
+the module at all. That is not a conflict to work around — the standard's example
+is an image, and the image has to be one that can build the module in front of it,
+which here is `golang:1.27`. The detector ran there, with cgo and the same
+`docker`-shim harness as Part 7 (no test file touched):
+
+```
+ok  github.com/william22913/sandbox-svc-code/tests            1.069s
+ok  github.com/william22913/sandbox-svc-code/tests/db         8.426s
+ok  github.com/william22913/sandbox-svc-code/tests/dto        1.018s
+ok  github.com/william22913/sandbox-svc-code/tests/endpoint   1.054s
+ok  github.com/william22913/sandbox-svc-code/tests/middleware 1.042s
+ok  github.com/william22913/sandbox-svc-code/tests/service    1.015s
+```
+
+**Verification on the bumped tree**, all in `golang:1.27-alpine` (the image the
+Dockerfile now builds from): `gofmt` clean, `go vet -mod=vendor ./...` and
+`go build -mod=vendor ./...` pass, `go test -mod=vendor ./...` green including
+`tests/db` against a real Postgres, and both standard scripts exit 0
+(`verify_generated_go_layout.py`, `verify_bundle_coverage.py` — the latter still
+reporting 26 registered codes against 6 `constanta` and 27 `error` keys).
+
+**`middleware/metrics.go` stays, and its header comment was rewritten.** The file
+no longer exists because nexcommon hardcodes `200` — that is fixed in this pin. It
+stays for the two gaps the fix does not close, both named by
+`nexcommon-go-prometheus-standards`: the library reads its route label through
+`mux.CurrentRoute(r).GetPathTemplate()`, which panics on an unmatched request and
+otherwise falls back to the unbounded `r.URL.Path`; and its response writer
+implements neither `Unwrap` nor `Flush`/`Hijack`, so `http.ResponseController`
+cannot reach the real writer. The comment now leads with those instead of the
+`200` bug, and nothing in the code changed.

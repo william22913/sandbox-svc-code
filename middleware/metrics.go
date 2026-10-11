@@ -13,11 +13,20 @@ import (
 // StatusAwareMetricsMiddleware records inbound HTTP request metrics with the
 // response's *actual* status code.
 //
-// nexcommon's own http/server/middleware hardcodes `statusCode := 200` before
-// observing, so a 422 or a 404 is recorded as a success. That is exactly the
-// signal REQ-007 depends on — the 500-cap rejection must be visible as a 422 —
-// so this service instruments its own traffic against the same APIHist
-// collector instead of enabling the library middleware.
+// nexcommon's own http/server/middleware does that too now — since v0.3.68 it
+// wraps the writer and observes the real status instead of a hardcoded 200 — so
+// this is no longer a workaround for a library bug. It is kept for the two things
+// the library's middleware still gets wrong, both of which
+// nexcommon-go-prometheus-standards asks for explicitly:
+//
+//   - The library reads its route label with
+//     `mux.CurrentRoute(r).GetPathTemplate()`, which dereferences a nil route on
+//     an unmatched request, and falls back to `r.URL.Path` — an unbounded label
+//     any caller can mint new series with. routeTemplate below is nil-safe and
+//     bounded.
+//   - Its loggingResponseWriter embeds http.ResponseWriter without `Unwrap` or
+//     `Flush`/`Hijack`, so http.ResponseController cannot reach the real writer.
+//     statusRecorder exposes `Unwrap` for exactly that.
 //
 // It satisfies the same interface (SupportMetrics + Serve), so the router wires
 // it identically.

@@ -1,16 +1,17 @@
 module github.com/william22913/sandbox-svc-code
 
-go 1.19
+go 1.27
 
 require (
 	github.com/go-redis/redis/v7 v7.4.1
 	github.com/gorilla/mux v1.8.0
 	github.com/jackc/pgx v3.6.2+incompatible
 	github.com/kelseyhightower/envconfig v1.4.0
-	github.com/nexsoft-git/nexcommon v0.3.67-swagger
+	github.com/nexsoft-git/nexcommon v0.3.68-swagger
 	github.com/nexsoft-git/nexlogger v0.0.18
 	github.com/prometheus/client_golang v1.14.0
 	github.com/rubenv/sql-migrate v1.3.1
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
@@ -88,5 +89,4 @@ require (
 	golang.org/x/text v0.14.0 // indirect
 	google.golang.org/protobuf v1.28.1 // indirect
 	gopkg.in/yaml.v2 v2.4.0 // indirect
-	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

@@ -7,7 +7,7 @@
 # the repo is the only trustworthy source in here — fetching would either fail
 # outright or, worse, silently resolve to a stale module cache and produce a
 # binary built from code that is not what the repo contains.
-FROM golang:1.23-alpine AS build
+FROM golang:1.27-alpine AS build
 WORKDIR /src
 
 COPY go.mod go.sum ./

@@ -41,11 +41,11 @@ func (m httpMiddleware) Serve(next http.Handler) http.Handler {
 
 			srv.CORSOriginHandler(&w)
 
-			if r.Method != http.MethodOptions {
-				next.ServeHTTP(w, r)
-			}
+			lrw := NewLoggingResponseWriter(w)
 
-			statusCode := 200
+			if r.Method != http.MethodOptions {
+				next.ServeHTTP(lrw, r)
+			}
 
 			if r.URL.Path != "/metrics" && r.Method != http.MethodOptions {
 				if m.metrics != nil {
@@ -57,7 +57,7 @@ func (m httpMiddleware) Serve(next http.Handler) http.Handler {
 					m.metrics.GetDefaultMetric().APIHist.WithLabelValues(
 						usedPath,
 						r.Method,
-						strconv.Itoa(statusCode),
+						strconv.Itoa(lrw.statusCode),
 					).Observe(float64(time.Since(now).Seconds()))
 				}
 			}
