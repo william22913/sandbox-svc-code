@@ -1,0 +1,360 @@
+openapi: 3.1.0
+
+info:
+  title: sandbox-svc
+  version: 1.0.0
+  description: |
+    sandbox-svc — the favorite-items feature (FEAT-001).
+
+    Three routes: favorite an item, list your favorites, un-favorite one. Every
+    route acts on the calling user's own rows only; the user is taken from the
+    access token, never from the request, so no route accepts a user id.
+
+    Paths, methods and tags are emitted by nexcommon's own generator
+    (`GenerateSwaggerDocs`, served at `/swagger/swagger.yaml`), so they cannot
+    drift from the routes the service registers. What is authored on top of it
+    here is the response side: the `{success, header, payload}` envelope, the
+    per-status coverage, the business error codes, and examples taken from the
+    real DTOs — none of which the generator can see.
+
+servers:
+  - url: http://localhost:{port}
+    description: Local compose stack
+    variables:
+      port:
+        default: "8080"
+
+# One tag per entity, matching the code's own organization: every route in
+# `services/favorite/` carries `constanta.TagFavorite`, and the tag is what
+# postman-collection-generator's folderStrategy=Tags groups the collection by.
+tags:
+  - name: Favorite
+    description: The calling user's personal favorites list (`services/favorite/`).
+
+security:
+  - bearerAuth: []
+
+paths:
+  /v1/favorites:
+    post:
+      tags: [Favorite]
+      operationId: addFavorite
+      summary: Favorite an item
+      description: |
+        Adds an item to the calling user's favorites. Favoriting an item that is
+        already favorited succeeds and changes nothing (`already_favorited:
+        true`). Fails with 422 when the user already holds 500 favorites —
+        nothing is inserted and no existing favorite is evicted. Answers 404
+        when the item does not exist in the catalog.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddFavoriteRequest'
+            examples:
+              add:
+                value:
+                  item_id: 1
+      responses:
+        '200':
+          description: The item is now in the caller's favorites.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AddFavoriteResponseEnvelope'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/Unprocessable'
+        '500':
+          $ref: '#/components/responses/Internal'
+
+    get:
+      tags: [Favorite]
+      operationId: listFavorites
+      summary: List the calling user's favorites
+      description: |
+        Returns everything the calling user has favorited, most recently
+        favorited first. An item discontinued in the catalog after it was
+        favorited is still listed, with `available: false` — the availability
+        flag is read live from the catalog, not copied at favorite-time.
+
+        An empty list is a normal response: `favorites` is `[]`, never `null`.
+
+        Taking no sort or filter parameters is deliberate for this pass;
+        `created_at` is retained so a later pass can add them without a
+        migration.
+      responses:
+        '200':
+          description: The caller's favorites, possibly empty.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FavoriteListEnvelope'
+              examples:
+                empty:
+                  value:
+                    success: true
+                    header: { request_id: "b1e3", version: "1.0.0", timestamp: "2026-10-11T00:00:00.000000Z" }
+                    payload: { favorites: [] }
+                one:
+                  value:
+                    success: true
+                    header: { request_id: "b1e3", version: "1.0.0", timestamp: "2026-10-11T00:00:00.000000Z" }
+                    payload:
+                      favorites:
+                        - item_id: 1
+                          name: "Item 1"
+                          available: true
+                          favorited_at: "2026-10-11T00:00:00.000000Z"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/Internal'
+
+  /v1/favorites/{item_id}:
+    delete:
+      tags: [Favorite]
+      operationId: removeFavorite
+      summary: Un-favorite an item
+      description: |
+        Removes the item from the calling user's favorites.
+
+        Answers 404 both when the item was never favorited and when the row
+        belongs to another user — the two are deliberately indistinguishable, so
+        this endpoint cannot be used to enumerate other users' favorites. A path
+        segment that is not a positive integer takes the same 404.
+      parameters:
+        - name: item_id
+          in: path
+          required: true
+          description: The catalog item's id.
+          schema:
+            type: integer
+            format: int64
+            minimum: 1
+      responses:
+        '200':
+          description: The item is no longer in the caller's favorites.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RemoveFavoriteResponseEnvelope'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '500':
+          $ref: '#/components/responses/Internal'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      # Modelled as apiKey-in-header rather than http/bearer on purpose.
+      # UserAccessValidator uses the *raw* Authorization value as a Redis key —
+      # it is not a JWT and is never parsed. Postman's http/bearer helper
+      # prepends "Bearer ", which would look up the wrong key and 401 every
+      # request; apiKey sends the value verbatim, which is what the server
+      # actually expects.
+      type: apiKey
+      in: header
+      name: Authorization
+      description: |
+        An opaque access token, sent verbatim in the `Authorization` header (no
+        `Bearer ` prefix). nexcommon's `UserAccessValidator` resolves the
+        caller's identity by looking the raw value up in Redis.
+
+  responses:
+    BadRequest:
+      description: The request body failed validation.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          examples:
+            empty_item_id:
+              value:
+                success: false
+                header: { request_id: "b1e3", version: "1.0.0", timestamp: "2026-10-11T00:00:00.000000Z" }
+                payload: { status: 400, code: "E-4-CMD-DTO-001", message: "ITEM_ID Cannot Empty" }
+    Unauthorized:
+      description: No valid access token was supplied.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+    NotFound:
+      description: |
+        For DELETE — no favorite of the caller's matches (never favorited, or
+        belongs to another user; the caller cannot tell which).
+        For POST — the item does not exist in the catalog.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          examples:
+            favorite_not_found:
+              value:
+                success: false
+                header: { request_id: "b1e3", version: "1.0.0", timestamp: "2026-10-11T00:00:00.000000Z" }
+                payload: { status: 404, code: "FAVORITE_NOT_FOUND", message: "Favorite not found" }
+            catalog_item_not_found:
+              value:
+                success: false
+                header: { request_id: "b1e3", version: "1.0.0", timestamp: "2026-10-11T00:00:00.000000Z" }
+                payload: { status: 404, code: "CATALOG_ITEM_NOT_FOUND", message: "Item not found" }
+    Unprocessable:
+      description: The user already holds the maximum number of favorites.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          examples:
+            at_cap:
+              value:
+                success: false
+                header: { request_id: "b1e3", version: "1.0.0", timestamp: "2026-10-11T00:00:00.000000Z" }
+                payload:
+                  status: 422
+                  code: "FAVORITES_LIMIT_REACHED"
+                  message: "You have reached the maximum of 500 favorites. Remove one before adding another."
+    Internal:
+      description: An unexpected server-side failure.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+
+  schemas:
+    AddFavoriteRequest:
+      type: object
+      required: [item_id]
+      properties:
+        item_id:
+          type: integer
+          format: int64
+          minimum: 1
+          description: The catalog item to favorite.
+
+    AddFavoriteResponse:
+      type: object
+      required: [item_id, already_favorited]
+      properties:
+        item_id:
+          type: integer
+          format: int64
+        already_favorited:
+          type: boolean
+          description: True when the item was already in the list and nothing changed.
+
+    RemoveFavoriteResponse:
+      type: object
+      required: [item_id]
+      properties:
+        item_id:
+          type: integer
+          format: int64
+
+    FavoriteItem:
+      type: object
+      required: [item_id, name, available, favorited_at]
+      properties:
+        item_id:
+          type: integer
+          format: int64
+        name:
+          type: string
+          description: The item's current catalog name, read at list-time.
+        available:
+          type: boolean
+          description: False when the item has been discontinued since it was favorited.
+        favorited_at:
+          type: string
+          format: date-time
+
+    FavoriteList:
+      type: object
+      required: [favorites]
+      properties:
+        favorites:
+          type: array
+          items:
+            $ref: '#/components/schemas/FavoriteItem'
+          description: Always an array — an empty favorites list is `[]`, never `null`.
+
+    Header:
+      type: object
+      required: [request_id, version, timestamp]
+      properties:
+        request_id:
+          type: string
+        version:
+          type: string
+        timestamp:
+          type: string
+
+    AddFavoriteResponseEnvelope:
+      type: object
+      required: [success, header, payload]
+      properties:
+        success:
+          type: boolean
+          const: true
+        header:
+          $ref: '#/components/schemas/Header'
+        payload:
+          $ref: '#/components/schemas/AddFavoriteResponse'
+
+    RemoveFavoriteResponseEnvelope:
+      type: object
+      required: [success, header, payload]
+      properties:
+        success:
+          type: boolean
+          const: true
+        header:
+          $ref: '#/components/schemas/Header'
+        payload:
+          $ref: '#/components/schemas/RemoveFavoriteResponse'
+
+    FavoriteListEnvelope:
+      type: object
+      required: [success, header, payload]
+      properties:
+        success:
+          type: boolean
+          const: true
+        header:
+          $ref: '#/components/schemas/Header'
+        payload:
+          $ref: '#/components/schemas/FavoriteList'
+
+    ErrorEnvelope:
+      type: object
+      required: [success, header, payload]
+      properties:
+        success:
+          type: boolean
+          const: false
+        header:
+          $ref: '#/components/schemas/Header'
+        payload:
+          $ref: '#/components/schemas/ErrorPayload'
+
+    ErrorPayload:
+      type: object
+      required: [status, code, message]
+      properties:
+        status:
+          type: integer
+          description: The HTTP status, repeated in the body.
+        code:
+          type: string
+          description: A stable business error code, e.g. `FAVORITES_LIMIT_REACHED`.
+        message:
+          type: string

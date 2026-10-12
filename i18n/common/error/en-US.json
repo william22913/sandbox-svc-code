@@ -1,0 +1,36 @@
+{
+  "FAVORITES_LIMIT_REACHED": "You have reached the maximum of 500 favorites. Remove one before adding another.",
+  "FAVORITE_NOT_FOUND": "Favorite not found",
+  "CATALOG_ITEM_NOT_FOUND": "Item not found",
+
+  "E-1-CMD-AUT-001": "Unauthorized",
+  "E-1-CMD-AUT-002": "Your session has expired, please sign in again",
+  "E-1-CMD-AUT-003": "Unauthorized",
+  "E-1-CMD-AUT-004": "This user is not active",
+  "E-1-CMD-AUT-005": "Your permissions have changed, please sign in again",
+
+  "E-3-CMD-AUT-001": "You do not have access to this resource",
+  "E-3-CMD-AUT-002": "You do not have permission to perform this action",
+  "E-3-CMD-AUT-003": "This action is outside your scope",
+  "E-3-CMD-AUT-004": "You do not have access to this data",
+  "E-3-CMD-AUT-005": "You do not have permission to perform this action",
+
+  "E-4-CMD-ADT-001": "Additional validation failed",
+
+  "E-4-CMD-BDY-001": "The request body could not be read",
+  "E-4-CMD-BDY-002": "The request body is invalid",
+  "E-4-CMD-BDY-003": "The request signature is invalid",
+  "E-4-CMD-BDY-004": "The request body is too large",
+
+  "E-4-CMD-DTO-001": "Field {{.FieldName}} Cannot Empty",
+  "E-4-CMD-DTO-002": "Invalid Format in Field {{.FieldName}}",
+  "E-4-CMD-DTO-003": "{{.FieldName}} must following rule : {{.RuleName}} {{.Other}}",
+  "E-4-CMD-DTO-004": "Unknown data with this {{.FieldName}}",
+  "E-4-CMD-DTO-005": "This {{.FieldName}} is already in use",
+  "E-4-CMD-DTO-006": "This {{.FieldName}} is a reserved value",
+  "E-4-CMD-DTO-007": "This {{.FieldName}} is currently locked",
+
+  "E-4-CMD-SRV-001": "The request could not be processed",
+
+  "E-5-SBX-SRV-001": "Internal Server Error, Please contact our customer service"
+}

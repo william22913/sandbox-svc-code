@@ -1,0 +1,899 @@
+{
+  "item": [
+    {
+      "name": "Favorite",
+      "description": "The calling user's personal favorites list (`services/favorite/`).",
+      "item": [
+        {
+          "id": "e690d949-f241-4daf-a9cf-cdf41d7d87b7",
+          "name": "Favorite an item",
+          "request": {
+            "name": "Favorite an item",
+            "description": {
+              "content": "Adds an item to the calling user's favorites. Favoriting an item that is\nalready favorited succeeds and changes nothing (`already_favorited:\ntrue`). Fails with 422 when the user already holds 500 favorites —\nnothing is inserted and no existing favorite is evicted. Answers 404\nwhen the item does not exist in the catalog.\n",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "v1",
+                "favorites"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "POST",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"item_id\": {{item_id}}\n}",
+              "options": {
+                "raw": {
+                  "headerFamily": "json",
+                  "language": "json"
+                }
+              }
+            },
+            "auth": null
+          },
+          "response": [
+            {
+              "id": "49ad0b49-622e-445f-a802-ed9c44cccb67",
+              "name": "The item is now in the caller's favorites.",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "v1",
+                    "favorites"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: apikey",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "<API Key>"
+                  }
+                ],
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"item_id\": \"<long>\"\n}",
+                  "options": {
+                    "raw": {
+                      "headerFamily": "json",
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": \"<boolean>\",\n  \"header\": {\n    \"request_id\": \"<string>\",\n    \"version\": \"<string>\",\n    \"timestamp\": \"<string>\"\n  },\n  \"payload\": {\n    \"item_id\": \"<long>\",\n    \"already_favorited\": \"<boolean>\"\n  }\n}",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            },
+            {
+              "id": "17f7e769-2d4d-4aa0-bbba-6d266032df9e",
+              "name": "The request body failed validation.",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "v1",
+                    "favorites"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: apikey",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "<API Key>"
+                  }
+                ],
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"item_id\": \"<long>\"\n}",
+                  "options": {
+                    "raw": {
+                      "headerFamily": "json",
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Bad Request",
+              "code": 400,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": \"<boolean>\",\n  \"header\": {\n    \"request_id\": \"<string>\",\n    \"version\": \"<string>\",\n    \"timestamp\": \"<string>\"\n  },\n  \"payload\": {\n    \"status\": \"<integer>\",\n    \"code\": \"<string>\",\n    \"message\": \"<string>\"\n  }\n}",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            },
+            {
+              "id": "d922420b-d9b7-4a53-ab85-8e417f65dd15",
+              "name": "No valid access token was supplied.",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "v1",
+                    "favorites"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: apikey",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "<API Key>"
+                  }
+                ],
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"item_id\": \"<long>\"\n}",
+                  "options": {
+                    "raw": {
+                      "headerFamily": "json",
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Unauthorized",
+              "code": 401,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": \"<boolean>\",\n  \"header\": {\n    \"request_id\": \"<string>\",\n    \"version\": \"<string>\",\n    \"timestamp\": \"<string>\"\n  },\n  \"payload\": {\n    \"status\": \"<integer>\",\n    \"code\": \"<string>\",\n    \"message\": \"<string>\"\n  }\n}",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            },
+            {
+              "id": "3c5714ef-2586-47cb-bf96-5de1e88d5004",
+              "name": "For DELETE — no favorite of the caller's matches (never favorited, or\nbelongs to another user; the caller cannot tell which).\nFor POST — the item does not exist in the catalog.",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "v1",
+                    "favorites"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: apikey",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "<API Key>"
+                  }
+                ],
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"item_id\": \"<long>\"\n}",
+                  "options": {
+                    "raw": {
+                      "headerFamily": "json",
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Not Found",
+              "code": 404,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": \"<boolean>\",\n  \"header\": {\n    \"request_id\": \"<string>\",\n    \"version\": \"<string>\",\n    \"timestamp\": \"<string>\"\n  },\n  \"payload\": {\n    \"status\": \"<integer>\",\n    \"code\": \"<string>\",\n    \"message\": \"<string>\"\n  }\n}",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            },
+            {
+              "id": "b1fd4e63-78d0-4b87-945f-27152ab603df",
+              "name": "The user already holds the maximum number of favorites.",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "v1",
+                    "favorites"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: apikey",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "<API Key>"
+                  }
+                ],
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"item_id\": \"<long>\"\n}",
+                  "options": {
+                    "raw": {
+                      "headerFamily": "json",
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Unprocessable Entity (WebDAV) (RFC 4918)",
+              "code": 422,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": \"<boolean>\",\n  \"header\": {\n    \"request_id\": \"<string>\",\n    \"version\": \"<string>\",\n    \"timestamp\": \"<string>\"\n  },\n  \"payload\": {\n    \"status\": \"<integer>\",\n    \"code\": \"<string>\",\n    \"message\": \"<string>\"\n  }\n}",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            },
+            {
+              "id": "658ff40d-60b1-4a7a-b873-40b9bfc54d4f",
+              "name": "An unexpected server-side failure.",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "v1",
+                    "favorites"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  },
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: apikey",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "<API Key>"
+                  }
+                ],
+                "method": "POST",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"item_id\": \"<long>\"\n}",
+                  "options": {
+                    "raw": {
+                      "headerFamily": "json",
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "status": "Internal Server Error",
+              "code": 500,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": \"<boolean>\",\n  \"header\": {\n    \"request_id\": \"<string>\",\n    \"version\": \"<string>\",\n    \"timestamp\": \"<string>\"\n  },\n  \"payload\": {\n    \"status\": \"<integer>\",\n    \"code\": \"<string>\",\n    \"message\": \"<string>\"\n  }\n}",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            }
+          ],
+          "event": [],
+          "protocolProfileBehavior": {
+            "disableBodyPruning": true
+          }
+        },
+        {
+          "id": "11b11e71-8f16-4903-a86f-832c82eb8642",
+          "name": "List the calling user's favorites",
+          "request": {
+            "name": "List the calling user's favorites",
+            "description": {
+              "content": "Returns everything the calling user has favorited, most recently\nfavorited first. An item discontinued in the catalog after it was\nfavorited is still listed, with `available: false` — the availability\nflag is read live from the catalog, not copied at favorite-time.\n\nAn empty list is a normal response: `favorites` is `[]`, never `null`.\n\nTaking no sort or filter parameters is deliberate for this pass;\n`created_at` is retained so a later pass can add them without a\nmigration.\n",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "v1",
+                "favorites"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": []
+            },
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "GET",
+            "body": {},
+            "auth": null
+          },
+          "response": [
+            {
+              "id": "50baa277-1cc8-4c8b-88b3-d338cc246079",
+              "name": "The caller's favorites, possibly empty.",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "v1",
+                    "favorites"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: apikey",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "<API Key>"
+                  }
+                ],
+                "method": "GET",
+                "body": {}
+              },
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": \"<boolean>\",\n  \"header\": {\n    \"request_id\": \"<string>\",\n    \"version\": \"<string>\",\n    \"timestamp\": \"<string>\"\n  },\n  \"payload\": {\n    \"favorites\": [\n      {\n        \"item_id\": \"<long>\",\n        \"name\": \"<string>\",\n        \"available\": \"<boolean>\",\n        \"favorited_at\": \"<dateTime>\"\n      },\n      {\n        \"item_id\": \"<long>\",\n        \"name\": \"<string>\",\n        \"available\": \"<boolean>\",\n        \"favorited_at\": \"<dateTime>\"\n      }\n    ]\n  }\n}",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            },
+            {
+              "id": "aca13625-0811-4ede-aa0e-23f069449d53",
+              "name": "No valid access token was supplied.",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "v1",
+                    "favorites"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: apikey",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "<API Key>"
+                  }
+                ],
+                "method": "GET",
+                "body": {}
+              },
+              "status": "Unauthorized",
+              "code": 401,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": \"<boolean>\",\n  \"header\": {\n    \"request_id\": \"<string>\",\n    \"version\": \"<string>\",\n    \"timestamp\": \"<string>\"\n  },\n  \"payload\": {\n    \"status\": \"<integer>\",\n    \"code\": \"<string>\",\n    \"message\": \"<string>\"\n  }\n}",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            },
+            {
+              "id": "cec26c11-b7fe-4fcf-865b-55382985c6ab",
+              "name": "An unexpected server-side failure.",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "v1",
+                    "favorites"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": []
+                },
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: apikey",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "<API Key>"
+                  }
+                ],
+                "method": "GET",
+                "body": {}
+              },
+              "status": "Internal Server Error",
+              "code": 500,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": \"<boolean>\",\n  \"header\": {\n    \"request_id\": \"<string>\",\n    \"version\": \"<string>\",\n    \"timestamp\": \"<string>\"\n  },\n  \"payload\": {\n    \"status\": \"<integer>\",\n    \"code\": \"<string>\",\n    \"message\": \"<string>\"\n  }\n}",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            }
+          ],
+          "event": [],
+          "protocolProfileBehavior": {
+            "disableBodyPruning": true
+          }
+        },
+        {
+          "id": "df926ee0-12e9-4fa2-8424-550ae615a9e4",
+          "name": "Un-favorite an item",
+          "request": {
+            "name": "Un-favorite an item",
+            "description": {
+              "content": "Removes the item from the calling user's favorites.\n\nAnswers 404 both when the item was never favorited and when the row\nbelongs to another user — the two are deliberately indistinguishable, so\nthis endpoint cannot be used to enumerate other users' favorites. A path\nsegment that is not a positive integer takes the same 404.\n",
+              "type": "text/plain"
+            },
+            "url": {
+              "path": [
+                "v1",
+                "favorites",
+                ":item_id"
+              ],
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "query": [],
+              "variable": [
+                {
+                  "type": "any",
+                  "value": "{{item_id}}",
+                  "key": "item_id",
+                  "disabled": false,
+                  "description": {
+                    "content": "(Required) The catalog item's id.",
+                    "type": "text/plain"
+                  }
+                }
+              ]
+            },
+            "header": [
+              {
+                "key": "Accept",
+                "value": "application/json"
+              }
+            ],
+            "method": "DELETE",
+            "body": {},
+            "auth": null
+          },
+          "response": [
+            {
+              "id": "f2fb8d84-ed5d-4f20-97b5-029db66a9f96",
+              "name": "The item is no longer in the caller's favorites.",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "v1",
+                    "favorites",
+                    ":item_id"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": [
+                    {
+                      "disabled": false,
+                      "description": {
+                        "content": "(Required) The catalog item's id.",
+                        "type": "text/plain"
+                      },
+                      "type": "any",
+                      "value": "<long>",
+                      "key": "item_id"
+                    }
+                  ]
+                },
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: apikey",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "<API Key>"
+                  }
+                ],
+                "method": "DELETE",
+                "body": {}
+              },
+              "status": "OK",
+              "code": 200,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": \"<boolean>\",\n  \"header\": {\n    \"request_id\": \"<string>\",\n    \"version\": \"<string>\",\n    \"timestamp\": \"<string>\"\n  },\n  \"payload\": {\n    \"item_id\": \"<long>\"\n  }\n}",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            },
+            {
+              "id": "2b717b6c-4733-4bb3-bcfe-0aeadba43e7d",
+              "name": "No valid access token was supplied.",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "v1",
+                    "favorites",
+                    ":item_id"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": [
+                    {
+                      "disabled": false,
+                      "description": {
+                        "content": "(Required) The catalog item's id.",
+                        "type": "text/plain"
+                      },
+                      "type": "any",
+                      "value": "<long>",
+                      "key": "item_id"
+                    }
+                  ]
+                },
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: apikey",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "<API Key>"
+                  }
+                ],
+                "method": "DELETE",
+                "body": {}
+              },
+              "status": "Unauthorized",
+              "code": 401,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": \"<boolean>\",\n  \"header\": {\n    \"request_id\": \"<string>\",\n    \"version\": \"<string>\",\n    \"timestamp\": \"<string>\"\n  },\n  \"payload\": {\n    \"status\": \"<integer>\",\n    \"code\": \"<string>\",\n    \"message\": \"<string>\"\n  }\n}",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            },
+            {
+              "id": "90d895d4-19b3-4040-b359-622f3d53af8e",
+              "name": "For DELETE — no favorite of the caller's matches (never favorited, or\nbelongs to another user; the caller cannot tell which).\nFor POST — the item does not exist in the catalog.",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "v1",
+                    "favorites",
+                    ":item_id"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": [
+                    {
+                      "disabled": false,
+                      "description": {
+                        "content": "(Required) The catalog item's id.",
+                        "type": "text/plain"
+                      },
+                      "type": "any",
+                      "value": "<long>",
+                      "key": "item_id"
+                    }
+                  ]
+                },
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: apikey",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "<API Key>"
+                  }
+                ],
+                "method": "DELETE",
+                "body": {}
+              },
+              "status": "Not Found",
+              "code": 404,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": \"<boolean>\",\n  \"header\": {\n    \"request_id\": \"<string>\",\n    \"version\": \"<string>\",\n    \"timestamp\": \"<string>\"\n  },\n  \"payload\": {\n    \"status\": \"<integer>\",\n    \"code\": \"<string>\",\n    \"message\": \"<string>\"\n  }\n}",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            },
+            {
+              "id": "9a42c1cb-3d69-4f4f-907e-6c8619d980b8",
+              "name": "An unexpected server-side failure.",
+              "originalRequest": {
+                "url": {
+                  "path": [
+                    "v1",
+                    "favorites",
+                    ":item_id"
+                  ],
+                  "host": [
+                    "{{baseUrl}}"
+                  ],
+                  "query": [],
+                  "variable": [
+                    {
+                      "disabled": false,
+                      "description": {
+                        "content": "(Required) The catalog item's id.",
+                        "type": "text/plain"
+                      },
+                      "type": "any",
+                      "value": "<long>",
+                      "key": "item_id"
+                    }
+                  ]
+                },
+                "header": [
+                  {
+                    "key": "Accept",
+                    "value": "application/json"
+                  },
+                  {
+                    "description": {
+                      "content": "Added as a part of security scheme: apikey",
+                      "type": "text/plain"
+                    },
+                    "key": "Authorization",
+                    "value": "<API Key>"
+                  }
+                ],
+                "method": "DELETE",
+                "body": {}
+              },
+              "status": "Internal Server Error",
+              "code": 500,
+              "header": [
+                {
+                  "key": "Content-Type",
+                  "value": "application/json"
+                }
+              ],
+              "body": "{\n  \"success\": \"<boolean>\",\n  \"header\": {\n    \"request_id\": \"<string>\",\n    \"version\": \"<string>\",\n    \"timestamp\": \"<string>\"\n  },\n  \"payload\": {\n    \"status\": \"<integer>\",\n    \"code\": \"<string>\",\n    \"message\": \"<string>\"\n  }\n}",
+              "cookie": [],
+              "_postman_previewlanguage": "json"
+            }
+          ],
+          "event": [],
+          "protocolProfileBehavior": {
+            "disableBodyPruning": true
+          }
+        }
+      ]
+    }
+  ],
+  "auth": {
+    "type": "apikey",
+    "apikey": [
+      {
+        "type": "any",
+        "value": "Authorization",
+        "key": "key"
+      },
+      {
+        "type": "any",
+        "value": "{{apiKey}}",
+        "key": "value"
+      },
+      {
+        "type": "any",
+        "value": "header",
+        "key": "in"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "test",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "pm.test('responds with a JSON body', () => {",
+          "  pm.response.json()",
+          "})",
+          "pm.test('responds within 2s', () => {",
+          "  pm.expect(pm.response.responseTime).to.be.below(2000)",
+          "})"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "port",
+      "value": "8080"
+    },
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:{{port}}"
+    }
+  ],
+  "info": {
+    "_postman_id": "d802b4e0-619a-41d3-a09f-403f786a9d41",
+    "name": "sandbox-svc",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": {
+      "content": "sandbox-svc — the favorite-items feature (FEAT-001).\n\nThree routes: favorite an item, list your favorites, un-favorite one. Every\nroute acts on the calling user's own rows only; the user is taken from the\naccess token, never from the request, so no route accepts a user id.\n\nPaths, methods and tags are emitted by nexcommon's own generator\n(`GenerateSwaggerDocs`, served at `/swagger/swagger.yaml`), so they cannot\ndrift from the routes the service registers. What is authored on top of it\nhere is the response side: the `{success, header, payload}` envelope, the\nper-status coverage, the business error codes, and examples taken from the\nreal DTOs — none of which the generator can see.\n",
+      "type": "text/plain"
+    }
+  }
+}

@@ -12,6 +12,10 @@ Greenfield as of the first feature (FEAT-001): no source tree existed before it.
 - **Postgres** for persistence, via nexcommon's data-access layer.
 - Auth/session is a shared middleware that is *consumed*, not built here; it
   places the authenticated user ID into request context.
+- **Not behind Kong.** Every route therefore uses nexcommon's plain
+  `httpController.UserAccessValidator()`, not the `...WithKong()` variant — the
+  caller's identity is resolved from the raw `Authorization` header against
+  Redis, and no gateway header is consulted.
 
 ## Feature docs
 

@@ -1,0 +1,846 @@
+# FEAT-001 — Dev Test Results
+
+Written by `/go-dev` for `sandbox-svc` / `FEAT-001`. One line per test case
+with its evidence, then the cases that cannot be settled at the backend layer,
+then the deliberate deviations and the known limitations of this pass.
+
+## How to run
+
+```sh
+go build -mod=vendor ./...
+go test -mod=vendor -count=1 ./tests/...
+```
+
+`tests/db` starts its own Postgres container and exits 0 with a printed SKIP
+when Docker is unavailable, so the suite is not silently green on a machine
+that never ran those tests — read the output.
+
+## Implementation points
+
+| # | Point | Files | Tests |
+|---|---|---|---|
+| 1 | Schema + migrations (`favorite_items`, `users`, `catalog_items`) | `sql_migrations/main/*.sql` | `tests/db` (they run against it) |
+| 2 | Sentinels + bundles | `error/error.go`, `i18n/common/error/en-US.json`, `constanta/` | `tests/bundle_coverage_test.go` |
+| 3 | DAO | `dao/favorite_dao.go` | `tests/db` |
+| 4 | Input DTO + validation | `dto/in/favorite.go` | `tests/dto` |
+| 5 | Output DTOs | `dto/out/favorite.go` | `tests/dto` |
+| 6 | Service | `services/favorite/*.go` | `tests/service` |
+| 7 | Endpoint registration | `endpoint/favorite_endpoint/`, `router/path.go`, `server_config/server_{dao,services,endpoint}.go` | `tests/endpoint` |
+| 8 | Observability | `middleware/metrics.go`, `router/controller.go` | `tests/middleware` |
+
+## Test case results
+
+Verdicts are for the **backend layer only**. Every case in `testcase.md` except
+TC-015 and TC-016 is written from the UI's point of view ("tap the star
+icon"), so several have a UI half this pass cannot verify; those are marked
+below and listed again under Test case feedback.
+
+| TC | Requirement | Verdict | Evidence |
+|---|---|---|---|
+| TC-001 | REQ-001 favorite an item | PASS (backend half) | `TestAddInserted`, `TestAddInsertsThenIsIdempotent`, `TestRoutesAreRegisteredWithTheirMethods`. The star's rendered state is the UI's. |
+| TC-002 | REQ-001 appears immediately, no reload | PASS (backend half) | Backend supplies the assertion: the add response is authoritative and the next `List` returns the item — `TestAddInserted`, `TestListMapsRowsAndKeepsAnEmptyListAnArray`. "Without reload" is a UI property. |
+| TC-003 | REQ-002 lists all favorited items | PASS | `TestListMapsRowsAndKeepsAnEmptyListAnArray`, `TestListReportsDiscontinuedItemAsUnavailable` (2 distinct items, no duplication or omission) |
+| TC-004 | REQ-002 empty list, no error | PASS | `TestFavoriteListEmptyIsArrayNotNull` (asserts the body is exactly `{"favorites":[]}`), `TestListIsEmptyNotNilWithoutFavorites`, `TestListMapsRowsAndKeepsAnEmptyListAnArray` |
+| TC-005 | REQ-003 un-favorite | PASS (backend half) | `TestRemoveDeletesScopedToTheAuthenticatedUser`, `TestRemoveOnlyTouchesTheCallersOwnRow` |
+| TC-006 | REQ-003 un-favorite from list, immediate | PASS (backend half) | Same as TC-005. "Immediately" is a UI property. |
+| TC-007 | REQ-004 discontinued item stays, marked unavailable | PASS (backend half) | `TestListReportsDiscontinuedItemAsUnavailable` — the item is favorited while available, discontinued by a soft mark, and still returned with `available: false` and its catalog name. The "unavailable" badge is the UI's. |
+| TC-008 | REQ-004 un-favorite a discontinued item | PASS | `TestRemovingADiscontinuedItemStillWorks` |
+| TC-009 | REQ-005 re-favoriting is idempotent | PASS | `TestAddAlreadyFavoritedIsSuccess`, `TestAddInsertsThenIsIdempotent` (asserts exactly one row), `TestRefavoritingAtCapStillSucceeds` |
+| TC-010 | REQ-006 anonymous cannot favorite | OUT OF BACKEND SCOPE | See Test case feedback. |
+| TC-011 | REQ-006 redirect target is login | OUT OF BACKEND SCOPE | See Test case feedback. |
+| TC-012 | REQ-007 the 500th favorite is accepted | PASS | `TestAddAtCapFailsWithoutInsertingOrEvicting` (seeds `limit` favorites at a small limit, asserts the boundary inserts), `TestAddDelegatesTheAuthenticatedUserAndTheCap` (asserts the production cap is 500) |
+| TC-013 | REQ-007 the 501st returns a clear error | PASS | `TestAddAtCapFailsWithoutInsertingOrEvicting` — asserts the outcome is `AddLimitReached`, the count did not move, and the rejected item is not in the table. `TestAddAtCapReturnsLimitReached` maps it to a 422 `FAVORITES_LIMIT_REACHED`, not a 500. |
+| TC-014 | REQ-007 un-favorite frees a slot | PASS | `TestUnfavoritingAtCapFreesASlot` |
+| TC-015 | REQ-008 never-favorited returns 404 | PASS | `TestRemoveMissingRowReturnsNotFound` (→ `ErrFavoriteNotFound`), `TestRemoveNonNumericPathIsNotFound` |
+| TC-016 | REQ-008 another user's item returns the same 404 | PASS | `TestRemoveOnlyTouchesTheCallersOwnRow` — user 2's delete leaves user 1's identical `(item_id)` row intact, and a cross-user remove is indistinguishable from a missing row. Only `ErrFavoriteNotFound` (404) exists on this path; there is no 403 sentinel to return. |
+
+## Test case feedback
+
+Two cases cannot be verified at this layer. `architecture.md`'s REQ-006 row
+already says so — *"Enforced by the assumed shared auth middleware (not this
+feature's code) … the FE's redirect-on-401 behavior is explicitly out of
+scope this pass"* — so this is the docs' own position, recorded here rather
+than passed silently.
+
+- **TC-010** — "anonymous user cannot favorite". The 401 is produced by
+  nexcommon's `UserAccessValidator()` before any feature code runs, and its
+  Redis/JWT internals belong to the auth service. The backend-observable half
+  of this case *is* covered: `TestDeleteIsDocumentedTaggedAndSecured` asserts
+  the routes carry a security requirement, so they are not documented as
+  publicly callable. Needs a real unauthenticated request against the running
+  stack — Part 6's Newman run — to close it properly.
+- **TC-011** — "redirect target is the login page". Purely a frontend
+  behavior; there is no backend response shape to assert. The backend half,
+  "no favorite record is created", is covered by TC-010's route protection.
+
+Neither case is wrong, and neither is skipped: both are correctly written,
+they just live a layer above this pass.
+
+## Deviations from the feature docs
+
+**Route prefix.** `architecture.md` writes the paths unprefixed
+(`POST /favorites`); the implementation registers them under
+`/v1/favorites`. The `/v1` comes from `router.V1PrefixPath`, which is where
+the two reference nexcommon services on disk keep their API version, and it
+matches this service's existing `/v1/health`. The doc's spelling reads as
+shorthand for the resource rather than a statement about versioning. The
+generated OpenAPI document, not `architecture.md`, is what a frontend pass
+will build against.
+
+**Error envelope.** `architecture.md` describes the cap error as
+`{"error_code": "FAVORITES_LIMIT_REACHED", "message": "..."}`. The real
+envelope is nexcommon's
+`{"success": false, "header": {...}, "payload": {"status": 422, "code": "FAVORITES_LIMIT_REACHED", "message": "..."}}`.
+The code string matches; the field names are the library's and this service
+cannot change them. A frontend reading `error_code` would get `undefined` —
+worth correcting in the doc before the FE pass.
+
+**Plain `WrapService` for the list.** `GET /v1/favorites` is registered as a
+plain service, not a get-list. `WrapServiceListData` mandates
+`page`/`limit`/`filter`/`order`/`connector` query parameters and a
+`[]model.SearchParam`; architecture.md defers sorting and filtering and says
+the list is unordered this pass, so registering it as a get-list would
+promise a paginated, filterable endpoint that does not exist.
+
+**Non-positive `item_id` on DELETE returns 404, not 400.** A path segment
+that is not a positive integer takes the same 404 as a well-formed id
+matching no row. REQ-008 requires one indistinguishable answer for everything
+that does not name one of the caller's own favorites, and a distinct 400
+would be the only way this endpoint could answer differently. Documented in
+`services/favorite/remove_favorite.go`.
+
+## Known limitations
+
+**`-race` runs, but not on this machine's toolchain.** `go test -race` here fails
+with `cgo: C compiler "gcc" not found` and there is no other C compiler on
+`PATH`, so the detector runs in a container instead — the `-race`-via-Docker rule
+the updated `golang-testing` standard now writes down: cgo on, `-mod=vendor`, the
+whole `./tests/...` tree, and `tests/db` against its real Postgres rather than a
+mock. It first ran on `golang:1.22`; after the bump to `v0.3.68-swagger` it runs
+on `golang:1.27.2-alpine`, which the module's `go 1.27` directive makes mandatory — 1.22
+refuses to build it at all. Every package is clean on both.
+
+```
+ok  github.com/william22913/sandbox-svc-code/tests            1.078s
+ok  github.com/william22913/sandbox-svc-code/tests/db         7.452s
+ok  github.com/william22913/sandbox-svc-code/tests/dto        1.021s
+ok  github.com/william22913/sandbox-svc-code/tests/endpoint   1.058s
+ok  github.com/william22913/sandbox-svc-code/tests/middleware 1.045s
+ok  github.com/william22913/sandbox-svc-code/tests/service    1.016s
+```
+
+`TestAddCapHoldsUnderConcurrentRequests` — 8 concurrent adds for 1 free slot — is
+therefore race-detector-verified, not merely invariant-asserted: the DAO's
+insert-and-count transaction contains no data race.
+
+Two things about the run are worth recording, because neither is visible from the
+command alone. First, `tests/db` starts Postgres by shelling out to `docker` and
+then reading back the published host port, with the DSN hardcoded to
+`host=127.0.0.1`; on Docker Desktop a container nested inside another container
+cannot reach that published port at all, so the run shimmed the `docker` binary to
+give the spawned Postgres the runner's own network namespace and report the port
+directly. The tests were not modified — only the runner. Second, it could not have
+been Go 1.19: the suite does not build there at all (next paragraph), which is the
+`go.mod` defect below.
+
+**`go.mod` declares `go 1.19`, which is below the real floor.** Running the suite
+on a 1.19 toolchain fails in `tests/endpoint` with
+`vendor/github.com/go-openapi/swag/string_bytes.go:7:29: undefined: unsafe.StringData`
+— `unsafe.StringData` arrived in Go 1.20, and that vendored package is pulled in
+through nexcommon's swagger wiring. `go 1.19` therefore understates the
+requirement; anything that trusts the directive (a CI image, a developer's local
+toolchain) can fail to build a tree that is fine on the 1.23 the Dockerfile
+already uses. Left unchanged as written, since raising it to 1.23 would also
+silently switch loop-variable semantics across the whole module — the decision is
+worth making deliberately, and 1.20 is the minimal honest value.
+
+**Upstream has since raised that floor to 1.27.** nexcommon's own `go.mod` now
+declares `go 1.27` — `v0.3.68` and `v0.3.68-swagger` both do — and an older
+toolchain is refused outright, not warned about:
+
+```
+go: go.mod requires go >= 1.27 (running go 1.25.6; GOTOOLCHAIN=local)
+```
+
+So 1.20 is the floor for **this** pin (`v0.3.67-swagger` declares `go 1.16`); any
+bump past `v0.3.68` needs 1.27. The images exist (`golang:1.27.2`,
+`golang:1.27.2-alpine`), and nothing here is broken by staying put — no shipped code
+depends on a post-0.3.68 fix. Bumping would be cheap, though: the only goroutine
+closure in this repo is `tests/db/favorite_dao_test.go:366`, which already passes
+its loop variable as a parameter, so moving the directive from 1.19 to 1.27
+changes no loop-variable semantics in this code.
+
+> **Resolved in the v0.3.68-swagger bump.** The directive now reads `go 1.27` and
+> the pin is `v0.3.68-swagger`, so the declaration and the real floor finally
+> agree; the Dockerfile builds from the exact patch `golang:1.27.2-alpine`. The loop-variable
+> exposure predicted above was re-checked against the raised directive and is
+> still nil — the one closure passes its variable as a parameter. See the bump
+> section at the end of this document.
+
+**The swagger document drops `POST /v1/favorites`.** nexcommon's
+`NewHandleFuncParam` assigns a fresh method map for a path on every call
+(`SwaggerPath[path] = make(...)`), so two routes sharing a path overwrite each
+other and only the last registered survives. The route is registered, routed
+and tagged correctly; it is the generated document that loses it. Pinned by
+`TestCollectionPathDocumentsOnlyOneMethod`, which fails once the library is
+fixed. `TestCollectionPathDocumentsOnlyOneMethod` pinned it, and the OpenAPI
+artifact was hand-corrected in Part 6 to put the route back.
+
+> **Resolved in the v0.3.67-swagger bump.** `NewHandleFuncParam` now guards the
+> assignment (`if SwaggerPath[path] == nil`, `param.go:21`), so the write is
+> additive and both operations survive. That test was replaced by
+> `TestCollectionPathDocumentsEveryMethod`, which asserts both — see the bump
+> section at the end of this document.
+
+**404s are not measured.** gorilla/mux applies middleware only after a route
+matches, so an unmatched request never reaches the metrics middleware and
+produces no metric at all. The request histogram measures handled traffic and
+cannot be used to alert on 404 volume. Pinned by
+`TestUnmatchedRequestsAreNotRecorded`.
+
+**Registration requires the validators to be wired first.** `WrapService`
+builds each route's swagger entry immediately and dereferences the tag
+validator while reading DTO fields, so calling `RegisterEndpoint` before
+`TagValidator(...)` panics at startup rather than at request time. The
+composition root orders this correctly — validators in `Init()`, routes in
+`InitEndpoint()` — and `tests/endpoint` mirrors that order deliberately.
+
+## Mutation checks
+
+Each guard was verified to fail when the behavior it claims is broken, then
+reverted.
+
+| Mutation | Test that caught it |
+|---|---|
+| Drop `min:"1"` from `AddFavoriteRequest.ItemID` | `TestAddRequestRejectsNonPositiveItemID` |
+| Drop `CATALOG_ITEM_NOT_FOUND` from the error bundle | `TestEveryErrorCodeIsBundled` |
+| Change the cap from 500 to 100 | `TestAddDelegatesTheAuthenticatedUserAndTheCap` |
+| Report the cap failure as success | `TestAddAtCapReturnsLimitReached` |
+| Drop the DELETE route registration | `TestRoutesAreRegisteredWithTheirMethods`, `TestDeleteIsDocumentedTaggedAndSecured` |
+| Tag the DELETE route with something other than `Favorite` | `TestDeleteIsDocumentedTaggedAndSecured` |
+| Hardcode the metric status to 200 (nexcommon's own bug) | `TestScrapeSeparatesSuccessFromCapRejection` |
+| Label metrics by `r.URL.Path` instead of the route template | `TestRequestsWithNoMatchedRouteUseTheFixedLabel` |
+| Drop the fixed fallback metric label | `TestRequestsWithNoMatchedRouteUseTheFixedLabel` |
+
+## Delivery guard (Part 5)
+
+Run against this feature's diff only (`git diff origin/feat/FEAT-001...HEAD`,
+excluding `vendor/`): 38 files, ~4.9k lines. Commands: `go vet`, `go build
+-mod=vendor`, `go test -mod=vendor -count=1 ./tests/...` — all clean; six test
+packages pass.
+
+### SQL security gate
+
+**PASS — no blockers, no majors.** All seven DAO query sites bind every value
+with `$1`/`$2`; no value or identifier is ever interpolated into SQL text.
+DML/DDL reviewed: 2 migrations, `dao/favorite_dao.go`, the DAO tests, and the
+test-DB bootstrap.
+
+Two minor notes, both recorded rather than fixed:
+
+- `tests/testdb/testdb.go:33` — the test container's password is the Postgres
+  image's public default on an ephemeral loopback-only throwaway database. Not
+  a secret leak; left as-is deliberately. Optional hygiene only.
+- `sql_migrations/main/2_favorite_items.sql` — the 500 cap has no schema
+  constraint, only the application-level lock-plus-count. Correct and the only
+  tractable design for a per-user row count, and safe because this DAO is the
+  sole writer of `favorite_items`.
+
+Specifically cleared as correct: the `FOR UPDATE` per-user lock that makes the
+count-then-insert check atomic; the EXISTS-before-COUNT ordering that keeps
+re-favoriting idempotent at the cap; and the single scoped
+`DELETE ... WHERE user_id = $1 AND item_id = $2`, which makes a cross-user
+delete impossible by construction rather than by a check (REQ-008).
+
+### Production-readiness gate
+
+**The gate named by the role prompt, `nexcraft:production-readiness-agent`,
+does not exist in the installed plugin** — `D:/code/my-local-code/vendor/nexcraft/agents/`
+has no such file. The plugin ships a `production-audit` *skill* instead, and
+that skill's lens was applied to this diff. Reported here plainly: the named
+agent did not run, something else did.
+
+**Score: 72/100 — launchable with caveats.** The code layer is sound; the
+score is held down entirely by packaging that Part 6 owns and has not produced
+yet, not by a code defect.
+
+Verified present:
+
+- Health check that proves dependency reachability: `/v1/health` via
+  nexcommon's `health.HealthEndpoint`.
+- `/metrics` scraped outside user-token validation, and status-aware — the
+  hardcoded-200 gap the architecture doc warned about is not present.
+- Migrations run forward and each has a `-- +migrate Down`, so there is a
+  rollback path.
+- Logger initialized as the literal first line of `config`'s `init()`, before
+  `envconfig.Process` — the silent-`log.Fatal` trap is avoided.
+- No secret or populated-config dump anywhere; the only startup log line names
+  `application` and `port`.
+
+Caveats, in order of weight:
+
+1. **No `Dockerfile` and no `docker-compose.yml`.** ~~The deploy surface does
+   not exist yet.~~ **Resolved in Part 6** — both now exist and the stack was
+   brought up end-to-end; see *Delivery guard (Part 6)*. The Part 5 score was
+   taken against the diff at that time and is left as recorded.
+2. **No CI workflow.** `.github/workflows/` is absent. Per the audit's own
+   rubric a green CI is assumed by a "strong" score; there is none to be green.
+3. **`config/config.go:70` references `sql_migrations/seed`, which does not
+   exist.** ~~Nothing in the repo provides it.~~ **Resolved in Part 6** — the
+   fixture now exists at `sql_migrations/seed/1_sandbox_seed.sql`.
+4. ~~**`-race` could not run locally.**~~ **Resolved in Part 7** — the whole
+   `./tests/...` tree, `tests/db` included, is race-clean; re-run on `golang:1.27.2`
+   after the library bump, since the raised directive makes 1.22 unusable.
+
+### Spec compliance
+
+Point-by-point against `spec.md` v3.
+
+| Spec item | Status | Where |
+|---|---|---|
+| REQ-001 favorite | met | `POST /v1/favorites` → `favorite.Service.Add` |
+| REQ-002 list | met | `GET /v1/favorites` → `favorite.Service.List` |
+| REQ-003 un-favorite | met | `DELETE /v1/favorites/{item_id}` → `favorite.Service.Remove` |
+| REQ-004 discontinued still listed, marked unavailable | met | `List` reads `catalog_items.is_available` live at list-time; no denormalized copy |
+| REQ-005 idempotent favorite | met | `INSERT ... ON CONFLICT (user_id, item_id) DO NOTHING`; the `AddAlreadyFavorited` outcome is a success |
+| REQ-006 anonymous cannot favorite | met (middleware) | `UserAccessValidator()` runs before every handler; the FE redirect is out of backend scope (see Test case feedback) |
+| REQ-007 500 cap, clear error, no silent fail/evict | met | `MaxFavoritesPerUser = 500`; 422 `FAVORITES_LIMIT_REACHED`; the transaction inserts nothing and evicts nothing |
+| REQ-008 uniform 404 on mismatch-or-missing | met by construction | one scoped query per read/write; the `dto/in` body carries no user field at all |
+| One-per-(user, item) | met | composite primary key, the real guarantee |
+| Max 500 per user | met | see REQ-007 |
+| Row-ownership on every read/write | met | user id read from `ctx.AuthAccessTokenModel.AuthenticationServerUserID`, never from the request |
+| Non-goals: no sharing, no recommendations | met | no such field or endpoint exists |
+| Deferred: sort/filter | respected | `GET /v1/favorites` takes no filter/order params; the DAO applies recency ordering only |
+| Dependency: catalog items (read-only) | met | `ItemExists` + the `List` join; no write path to `catalog_items` |
+| Dependency: auth/session (consumed) | met | user id comes from the token model; no session logic here |
+| External integrations: none | met | no network boundary added |
+
+No spec item is unmet. The four recorded deviations are spelling/shape
+differences (route prefix, the library's error-envelope field names, plain
+`WrapService` for the list, and the non-positive `item_id` → 404 choice), all
+argued in Deviations above.
+
+### Architecture compliance
+
+- **Components.** `favorite_endpoint`, the favorite service, and `favorite_dao`
+  all exist as the doc names them. The service and DAO packages are
+  `services/favorite` and `dao` rather than literals `favorite_service` /
+  `favorite_dao` — that is the house package layout, and the doc's names are
+  component names, not file paths.
+- **Authorization.** Every route is behind a validator; there is no
+  role/permission distinction beyond "logged in", exactly as the doc states, so
+  no `.Permisson(...)`/`.APIScope(...)` is set. No endpoint addresses a favorite
+  by anything but the caller's own `(user_id, item_id)`.
+- **Data design.** `favorite_items (user_id, item_id, created_at)`, composite
+  PK, no surrogate key, no soft-delete columns — matches `database.md`'s Batch 1
+  exactly, including its argued deviations from the house table convention.
+- **`spec_traceability`.** Every row of the table is answered by the
+  implementation. There is no row whose architectural answer is unimplemented.
+- **`## Observability`.** The doc's decision was "wire standard request metrics
+  once, and do not accept a status-blind wrapper." The implementation is
+  status-aware: `middleware/metrics.go` captures the real response status into
+  `my_app_http_hist` and labels by route template, and its behaviour is pinned
+  by `tests/middleware` including the negative cases (a 422 is not folded into
+  200; an unmatched request adds no series). No feature-specific dashboard or
+  counter was invented, as the guard requires. The doc's named verification — a
+  manual `/metrics` scrape confirming a 2xx and a 422 land on different labels —
+  is covered by `TestScrapeSeparatesSuccessFromCapRejection`, and the live
+  scrape is Part 6.
+
+### Delivery guard (Part 6)
+
+**Scope.** Packaging and API artifacts, plus a live end-to-end run of the whole
+service — not just the handler layer. Diff from the Part 5 checkpoint:
+
+| Path | What it is |
+|---|---|
+| `Dockerfile` | Multi-stage, `-mod=vendor`, non-root `app` user, `i18n/` copied into the runtime stage (the bundles are data, not compiled in). |
+| `docker-compose.yml` | Postgres 16 + Redis 7 + the app, both dependencies gated by `condition: service_healthy`. |
+| `sql_migrations/seed/1_sandbox_seed.sql` | The fixture `config/config.go:70` points at; idempotent. |
+| `api/openapi.yaml` | OpenAPI 3.1. Paths, methods and tags come from nexcommon's generator; the response side (envelope, per-status coverage, error codes, examples) is authored on top of it. See the second re-check below. |
+| `postman/collection.json` | Generated from the above with `folderStrategy=Tags` — one folder per entity. |
+| `postman/environment.local.json` | `baseUrl` + `apiKey` + `item_id`. |
+| `postman/enrich-collection.js` | Deterministic post-processor re-applied after every regeneration. |
+
+**Two tool defects worked around, both recorded rather than hidden.**
+
+1. **~~The Swagger generator drops a route.~~ Fixed upstream in v0.3.67-swagger.**
+   Under v0.3.57-swagger-alpha, `NewHandleFuncParam` did
+   `SwaggerContainer.SwaggerPath[path] = make(...)` on every call, so two routes
+   sharing a path overwrote each other and only the last survived; `POST
+   /v1/favorites` was silently missing from the generated document, and
+   `api/openapi.yaml` was hand-authored to put it back (validated with
+   `redocly lint` — *"Your API description is valid"*, two intentional warnings:
+   no license, localhost server). The v0.3.67 bump resolved it: the assignment is
+   now guarded and both operations are generated.
+2. **Postman's bearer helper cannot talk to this service.** `UserAccessValidator`
+   uses the *raw* `Authorization` value as the Redis key — it is not a JWT and is
+   never parsed. Postman's `http/bearer` auth prepends `"Bearer "`, which would
+   look up the wrong key and 401 every request. The security scheme is modelled
+   as `apiKey`-in-header instead, so the header is sent verbatim, with the reason
+   written into the spec.
+
+**The live run found a real bug — fixed, and the guard that missed it is now the
+guard that catches it.**
+
+An unauthenticated request returned:
+
+```json
+{"payload":{"status":401,"code":"E-1-CMD-AUT-001","message":"E-1-CMD-AUT-001"}}
+```
+
+The client received the raw error code as its message. `i18n/common/error/en-US.json`
+and `error/error.go`'s code list carried an **invented** `E-3-SBX-AUT-001`, while
+nexcommon actually emits `E-1-CMD-AUT-001` (`vendor/.../error/message.go:5`). The
+bundle-coverage guard passed because it only checked the codes in its own — wrong —
+list.
+
+Fixed on all three fronts:
+
+- The bundle now carries all 22 codes nexcommon's `error/message.go` can emit, plus
+  this service's own three and the formator's configured default.
+- `BundledCodes` no longer hand-lists nexcommon's codes at all.
+- `tests/bundle_coverage_test.go` gained `TestEveryNexcommonErrorCodeIsBundled`,
+  which **reads the codes out of the vendored `message.go`** and asserts each is
+  bundled — so the list cannot drift from the library again. Mutation-checked:
+  renaming `E-1-CMD-AUT-001` in the bundle makes it fail with
+  `missing key "E-1-CMD-AUT-001"`; restoring it passes.
+
+After the rebuild the same request returns `"message":"Unauthorized"`.
+
+**Live end-to-end results.** Built, `docker compose up`, all three containers
+healthy, migrations applied by the app on boot, Postgres seeded from the fixture,
+two Redis tokens seeded by hand (the fixture covers Postgres only) in the exact
+`AuthAccessTokenModel` JSON shape.
+
+| Check | TC | Result |
+|---|---|---|
+| Empty list is `{"favorites":[]}`, not `null` | TC-004 | 200, `[]` |
+| No token → 401 | TC-010 | 401, `E-1-CMD-AUT-001`, message `Unauthorized` |
+| Discontinued item still listed, `available:false` | TC-007 / REQ-004 | 200, item 3 present |
+| User 2 deleting user 1's row → uniform 404, row intact | TC-016 / REQ-008 | 404 `FAVORITE_NOT_FOUND`; user 1's row unchanged |
+| Add at 500 cap → clear 422, nothing inserted, nothing evicted | REQ-007 | 422 `FAVORITES_LIMIT_REACHED`; user 1's count 501 → 501, item 2 absent |
+| All three endpoints | TC-001…003 | Newman: 3 requests, 6 assertions, 0 failures |
+
+**The observability decision in `architecture.md` is verified live.** The doc
+mandated status-aware metrics and named this exact verification — a scrape
+showing a 2xx and a 422 on different labels:
+
+```
+my_app_http_hist_count{method="GET", path="/v1/favorites",  status="200"} 1
+my_app_http_hist_count{method="GET", path="/v1/favorites",  status="401"} 1
+my_app_http_hist_count{method="POST",path="/v1/favorites",  status="422"} 1
+my_app_http_hist_count{method="GET", path="/v1/health",     status="200"} 4
+```
+
+A 200 and a 422 land on different labels; the label is the route template, not an
+ID; `/metrics` does not count itself. No feature-specific dashboard or counter was
+invented.
+
+Stack brought down with `docker compose down`. The `18080:8080` host mapping is
+deliberate: this machine already has another stack on 8080, and the container port
+stays the service's real one.
+
+**Limitations, updated.**
+
+- **`-race` now runs** (in a container, for want of a local gcc) — the full
+  `./tests/...` tree including the DB-backed cap test is race-clean, on
+  `golang:1.27.2` since the library bump. `go.mod`'s `go 1.19` directive was the
+  standing defect here; it now reads `go 1.27`, matching the bumped pin's floor.
+- **No CI workflow** (`.github/workflows/` absent), unchanged from Part 5.
+- The Redis token fixture is still seeded by hand; the Postgres fixture now exists.
+
+## New-standard re-check (post-Part-6)
+
+The `nexcraft` plugin standard was updated after this feature landed: three
+mechanical scripts now exist under the plugin's `scripts/` (`detect_go_project_layout.py`,
+`verify_generated_go_layout.py`, `verify_bundle_coverage.py`) where before there
+were none. `/go-dev`'s Part 4 now requires running the verifiers after any point
+that wrote Go files, and states they exist *because* of the two failures this
+repo hit — an endpoint file at the module root and an invented auth error code.
+This section re-audits the committed feature against them.
+
+### `verify_generated_go_layout.py` — FAILED, then fixed
+
+First run reported:
+
+```
+FAILED — the following files must be fixed before this task is done:
+  - endpoint file not inside a '*_endpoint/' directory:
+    server_config\server_endpoint.go (parent dir: 'server_config')
+```
+
+`server_config/server_endpoint.go` is the composition root's route-registration
+file (`InitEndpoint()`), not an entity endpoint — the check's name-suffix
+heuristic can't tell those apart, and it is right that it can't: the scaffold
+this project follows names the composition root's endpoint file `endpoint.go`.
+Renamed the three composition-root wiring files to that scaffold's canonical
+names — `server_dao.go` → `dao.go`, `server_services.go` → `service.go`,
+`server_endpoint.go` → `endpoint.go`. Pure renames: same package, same exported
+symbols, no import changes.
+
+Re-run: **OK — 28 generated files, no misplaced endpoint files, no leaked
+template artifacts.**
+
+### `verify_bundle_coverage.py` — could not run on the old pin; the bump fixed that
+
+On the first attempt the script could not run at all:
+
+```
+ERROR: `go run` failed while collecting registered codes ...
+.\tmp..._verify_bundle_coverage_check.go:11:27: undefined: nexerr.AllCodes
+```
+
+It derives the required code set from `error.AllCodes()`, a function added to
+nexcommon *for this purpose*, and the pinned `v0.3.57-swagger-alpha` predates it —
+that version's `error` package exports only `NewErrorFormator`,
+`NewUnBundledErrorMessages` and `NewErrorMessageParam`. Bumping to
+`v0.3.67-swagger` (see the bump section below) made the script runnable, and it
+immediately found a real gap — `E-4-CMD-BDY-004`, new in that version — which was
+fixed. It now reports:
+
+```
+Checked 26 registered code(s) (nexcommon + .../error) against:
+  common.constanta (6 keys), common.error (27 keys).
+OK - every registered code has a bundle entry.
+```
+
+The local guard tests covered the same ground while the script could not run —
+`TestEveryNexcommonErrorCodeIsBundled` derives nexcommon's codes from the
+vendored `error/message.go`, `TestEveryErrorCodeIsBundled` walks this service's
+own. The derivation from the vendored source rather than a hand-written list is
+the same property `AllCodes()` gives the script, and it is what caught
+`E-4-CMD-BDY-004` the moment the library changed — see the Part 6 entry above for
+the bug that proved why.
+
+### `detect_go_project_layout.py` — reconnaissance, two real gaps closed
+
+Advisory only (it names conventions; it does not gate). It reported three items
+this pass could act on, and two that are its own gaps:
+
+- **`sql_migrations/`: not present** → fixed. The repo used `migrations/`; the
+  house layout names `sql_migrations/` and the feature docs are silent on it, so
+  the house name applies. Renamed the directory (keeping the internal
+  `main/` + `seed/` split) and updated every reference: `main.go`, the DAO test
+  helper, both `Dockerfile` stages, `docker-compose.yml`'s seed mount and the
+  `config.go` comment. Detector now reports `sql_migrations/: subfolder-per-target
+  shape, targets: main, seed`.
+- **Kong statement: not found** → added to `CLAUDE.md`. The service is not behind
+  Kong, so every route uses the plain `UserAccessValidator()`; that is now
+  written down rather than left for the next reader to infer.
+- **Validator usage: "none of the known validator names matched"** → a false
+  positive. The detector's name list omits the plain `UserAccessValidator`, which
+  the pinned nexcommon *does* provide (`controller/user_access.go:47`) and which
+  all three routes use. No code change; the `CLAUDE.md` line above now answers it.
+- **`service/`: not present** and **composition root not found** → also its own
+  gaps: this repo uses `services/` (the name the layout skill gives) and
+  `server_config/` (which the config standard names as a real-project convention).
+  Neither is a deviation.
+
+### Guard
+
+`gofmt` clean; `go vet -mod=vendor ./...` and `go build -mod=vendor ./...` pass;
+`go test -mod=vendor ./tests/...` all green, including `tests/db` (7.6s against a
+real Postgres — which also re-verifies the renamed migration path the test helper
+globs).
+
+## nexcommon bump to v0.3.67-swagger
+
+Done so `verify_bundle_coverage.py` could run (it needs `error.AllCodes()`), and
+because a hand-derived code list only stays honest if the library under it is
+current. `go.mod`: `nexcommon v0.3.57-swagger-alpha → v0.3.67-swagger`. That
+pulled `nexlogger v0.0.13 → v0.0.18` (nexcommon's own requirement) and added
+`github.com/robfig/cron v1.2.0` as an indirect dependency (nexlogger 0.0.18 ships
+a scheduler). `v0.3.67-swagger` was chosen because it is the only cached version
+carrying **both** `error.AllCodes()` and the swagger wiring this service needs —
+every other candidate had one or the other.
+
+Rebuild was clean, but two things the newer library changed had to be handled,
+both real:
+
+**1. A new error code the bundle did not carry.** `AllCodes()` reports
+`E-4-CMD-BDY-004` — `ErrRequestBodyTooLarge` (413), added by nexcommon's new
+request-body cap. The guard test failed on the next run with
+`missing key "E-4-CMD-BDY-004"` before the script was even consulted, which is
+exactly what deriving the list from the vendored source is for. Added it. Reading
+the real definitions also exposed three **mislabeled** siblings already in the
+bundle — `E-4-CMD-BDY-002` is `ErrMarshalingBody`, not "too large", and
+`E-4-CMD-BDY-003` is `ErrInvalidSignature`, not "not supported"; `E-4-CMD-BDY-001`
+is `ErrReadBody`. All four now say what they mean.
+
+**2. The swagger generator no longer drops a route.** `NewHandleFuncParam` now
+guards its map assignment (`if SwaggerPath[path] == nil`), so `POST /v1/favorites`
+survives alongside `GET`. `TestCollectionPathDocumentsOnlyOneMethod` — which
+existed to fail once this was fixed — was replaced by
+`TestCollectionPathDocumentsEveryMethod`, asserting both. This is the one library
+defect this feature had been working around, and it is gone.
+
+**Not changed: nexcommon's metrics middleware still hardcodes the status.** The
+inspected `http/server/middleware/middleware.go:48` still sets `statusCode := 200`
+before observing the histogram, so a 404 or 401 would be labeled 200. This
+service's own status-aware middleware remains the correct wiring and was left as
+is (see `nexcommon-go-prometheus-standards`, which names exactly this case).
+
+**Verification on the bumped library.** Full guard green: `gofmt` clean, `vet` and
+build pass, `go test -mod=vendor ./tests/...` all green including `tests/db`
+against a real Postgres, and both standard scripts (`verify_generated_go_layout.py`,
+`verify_bundle_coverage.py`) exit 0.
+
+Live, against the rebuilt image — health green, migrations applied, two Redis
+tokens seeded, and the whole feature exercised end to end:
+
+| Check | Result |
+|---|---|
+| No token → 401 | `E-1-CMD-AUT-001`, message `Unauthorized` |
+| Empty list | `{"favorites":[]}`, not `null` |
+| Add item 1 | 200, `already_favorited:false` |
+| Add a catalog item that does not exist | 404 `CATALOG_ITEM_NOT_FOUND`, `Item not found` |
+| List | item 1 present with its catalog name and `available:true` |
+| Another user deletes that row | 404 `FAVORITE_NOT_FOUND`, uniform |
+| Owner deletes it | 200; list empty again |
+
+`/metrics` on the bumped build still labels by route template with the real
+status — `200`, `401` and `404` on distinct labels, `/metrics` absent from them:
+
+```
+my_app_http_hist_count{method="DELETE",path="/v1/favorites/{item_id}",status="200"} 1
+my_app_http_hist_count{method="DELETE",path="/v1/favorites/{item_id}",status="404"} 1
+my_app_http_hist_count{method="GET",path="/v1/favorites",status="200"} 3
+my_app_http_hist_count{method="GET",path="/v1/favorites",status="401"} 1
+my_app_http_hist_count{method="POST",path="/v1/favorites",status="404"} 1
+```
+
+Vendor grew by 14 files (2806 → 2820), still ~37 MB — the two versions are close,
+so the bump is a small delta rather than a re-vendor of the world.
+
+## Second standard re-check: the API-artifact rules
+
+The two doc-generator skills were updated after the bump, and both now state
+their previously-implicit expectations as rules. Re-read against this repo's
+artifacts:
+
+**Every operation must carry a `tags:` entry naming its owning entity, and the
+tag must correspond to how the code is organized.** Already held, and it is
+nexcommon doing it rather than a post-process: `.Tags(constanta.TagFavorite)` on
+each `WrapService` call, and the entity is `services/favorite/`. The tag is not
+decoration — it is the entire input to the collection's folder grouping, so an
+operation that loses it drops out of its folder silently instead of failing. The
+spec now says so at its `tags:` block.
+
+**The fixed default locations.** The spec was already at `api/openapi.yaml`. The
+collection and environment were not at the skills' fixed names — they were
+`postman/sandbox-svc.postman_collection.json` and
+`postman/local.postman_environment.json`, which is Postman's own naming, not a
+pre-existing project convention this repo had (FEAT-001 is the first thing to
+exist here). Renamed to `postman/collection.json` and
+`postman/environment.local.json`; `enrich-collection.js` and the table above
+follow.
+
+**The collection is a build artifact, regenerated from the spec.** Re-ran the
+converter rather than editing the JSON:
+
+```
+openapi2postmanv2 -s api/openapi.yaml -o postman/collection.json -p -O folderStrategy=Tags
+node postman/enrich-collection.js
+```
+
+Result verified rather than assumed: **one folder**, named after the tag, holding
+exactly the three requests — one folder per entity, which is the check the
+Postman skill asks for. Diffing the regenerated file against the committed one,
+excluding the regenerator's random UUIDs, shows the request surface is
+**byte-identical**; the only changes are the two description strings the spec
+edit just made. The earlier green Newman run therefore still stands as the
+verification of these requests, and was not repeated for a description-only
+change.
+
+**New guard: `TestOpenAPISpecMatchesRegisteredRoutes`.** The "never let it drift"
+rule had nothing enforcing it — the spec is a separate file from the routes, so
+a route added to the endpoint layer and forgotten in the spec would ship a
+document that lies, and the reverse would document an endpoint that 404s. The
+test walks `api/openapi.yaml` and compares it with `SwaggerContainer` (built by
+the real `RegisterEndpoint`), in both directions, and additionally requires
+exactly one tag per operation that is declared in the document's own `tags:`
+list. Mutation-checked, since a guard that cannot fail is worse than none:
+
+| Mutation | Result |
+|---|---|
+| A `/v1/ghost` operation added to the spec | `GET /v1/ghost is documented but not registered` |
+| DELETE stripped of its `tags:` entry | `DELETE /v1/favorites/{item_id} carries 0 tags, want exactly 1` |
+
+**One tool note.** The Postman skill's command passes
+`requestParametersResolution=Example`; the installed converter build rejects that
+key (`Warning: Invalid option supplied`), so the working command uses
+`folderStrategy=Tags` alone. The `enrich-collection.js` post-processor is what
+makes the type-hint placeholders the converter emits (`<long>`) usable as
+`{{item_id}}`.
+
+## Delivery guard (Part 7) — the race detector
+
+Requested after Part 6, and the one item every earlier part had to leave open:
+`go test -race` had never run on this tree. It still cannot run natively — there
+is no C compiler on this Windows machine — so it ran in a Linux container instead,
+on `golang:1.22` at the time (the spin-up rule is now written down in
+`golang-testing`: `-race` always runs via Docker, never bare on the host and never
+skipped when the host lacks a compiler). The whole `./tests/...` tree is clean,
+`tests/db` included, against its real Postgres:
+
+```
+ok  github.com/william22913/sandbox-svc-code/tests            1.078s
+ok  github.com/william22913/sandbox-svc-code/tests/db         7.452s
+ok  github.com/william22913/sandbox-svc-code/tests/dto        1.021s
+ok  github.com/william22913/sandbox-svc-code/tests/endpoint   1.058s
+ok  github.com/william22913/sandbox-svc-code/tests/middleware 1.045s
+ok  github.com/william22913/sandbox-svc-code/tests/service    1.016s
+```
+
+`TestAddCapHoldsUnderConcurrentRequests` (8 concurrent adds for 1 free slot) is now
+race-detector-verified rather than invariant-asserted alone.
+
+**Getting `tests/db` to run under the detector was the whole difficulty, and the
+obstacle was the harness, not the code.** `testdb.Start` shells out to `docker`,
+then reads the published host port back with `docker port`, and the DSN it builds
+is hardcoded to `host=127.0.0.1`. A container nested inside another container on
+Docker Desktop cannot reach that published port — `--network host` there is not the
+Linux VM's namespace, so both the loopback port and the bridge address are refused
+(probed directly, both `REFUSED`, while Postgres inside its own container logged
+`database system is ready to accept connections`). The run therefore shimmed the
+`docker` binary on the container's `PATH`: `run` was forwarded with
+`--network container:$(hostname)` and the `-p` flag dropped, and `port` answered
+`127.0.0.1:5432` directly. Postgres then shares the runner's own network namespace
+and the unmodified DSN works. **No test file was touched** — the shim lives only in
+the throwaway container.
+
+Two side findings, both recorded above in Known limitations:
+
+1. **`go.mod`'s `go 1.19` is below the real floor.** On a 1.19 toolchain
+   `tests/endpoint` does not build: `vendor/github.com/go-openapi/swag/string_bytes.go:7:29:
+   undefined: unsafe.StringData`. The detector run needed at least 1.20; 1.20 is
+   the minimal honest value, and raising the directive to 1.22 or above would
+   silently change loop-variable semantics module-wide. Left for a deliberate
+   decision rather than changed here. Upstream has since gone further — see the
+   `go 1.27` note in Known limitations.
+2. **A misleading first symptom.** Some early attempts failed at
+   `reading mapped port for ...: no public port '5432' published`, which reads like
+   a defect in `testdb.hostPort`. It is not: the container had started, and adding a
+   single extra fork between `docker run` and `docker port` made the lookup succeed
+   every time. It was a startup-timing artifact of the nested CLI/daemon pairing,
+   not reachable from the repo's own code path.
+
+### Upstream's HTTP-metrics fix — checked, and it does not retire our middleware
+
+The same upstream round fixed the bug this service's `middleware/metrics.go` exists
+to work around. nexcommon's HTTP middleware no longer hardcodes `200`: it wraps the
+writer in `NewLoggingResponseWriter` and observes `lrw.statusCode`, which defaults
+to `http.StatusOK` and is set by `WriteHeader`. Verified by reading the tag, not by
+reputation — `bec5fcd` on main, `b52f8fc` as the swagger line's own copy of it, and
+`v0.3.68-swagger` carries the latter (so the swagger-wired tag has the fix, even
+though the two commit ids differ).
+
+It still does not meet what `nexcommon-go-prometheus-standards` requires of this
+middleware, in the two places that matter here:
+
+- `usedPath, _ := mux.CurrentRoute(r).GetPathTemplate()` — for an unmatched request
+  `mux.CurrentRoute` is nil and the call panics, and the fallback it then takes is
+  `usedPath = r.URL.Path`, the unbounded-label case the standard says never to
+  label with. `routeTemplate` in this service returns a fixed `"unmatched"` instead.
+- `loggingResponseWriter` implements neither `Unwrap` nor `Flush`/`Hijack`, so
+  `http.ResponseController` cannot reach the real writer; our `statusRecorder`
+  exposes `Unwrap` for exactly that. The standard calls this out by name.
+
+No test in nexcommon covers that middleware at all — `NewLoggingResponseWriter` and
+`APIHist` appear in no `_test.go` file there. So the service keeps its own
+middleware, now for those two reasons rather than for the `200` bug. The comment at
+the top of `middleware/metrics.go` still justified the file by the hardcoded `200`,
+so it was rewritten in the bump below to lead with the two gaps instead; the code
+itself needed no change either way.
+
+## nexcommon bump to v0.3.68-swagger
+
+`nexcommon v0.3.67-swagger → v0.3.68-swagger`, and with it the module's own
+directive, `go 1.19 → go 1.27`. `v0.3.68-swagger` is the swagger-wired tag at the
+new floor: `v0.3.68` on main carries the metrics fix but no swagger wiring, and
+`v0.3.68-swagger` (`origin/swagger` HEAD, `1f11580`) carries both — the metrics fix
+as its own commit, `b52f8fc`, "Bump Go to 1.27; fix HTTP metrics always recording
+status 200".
+
+**The blast radius is three files.** By tag-to-tag `git diff`, only `go.mod`,
+`go.sum` and `http/server/middleware/middleware.go` differ between the two
+versions. Nothing this service calls changed shape; no source outside `go.mod`,
+the Dockerfile and the middleware comment was touched.
+
+**`go.sum` shrank by 654 lines and `vendor/` by three files.** The tidy dropped
+test fixtures the newer module graph no longer needs —
+`vendor/github.com/mvrilo/go-redoc/testdata/spec.json` and
+`vendor/github.com/rubenv/sql-migrate/test-migrations/{1_initial,2_record}.sql` —
+plus `vendor/modules.txt`'s two lines for this module (`go 1.16` → `go 1.27`).
+The vendored `nexcommon/http/server/middleware/middleware.go` is the only vendored
+code that changed, and it is the fix:
+`lrw := NewLoggingResponseWriter(w)` → `next.ServeHTTP(lrw, r)` →
+`strconv.Itoa(lrw.statusCode)`.
+
+**The pinned image was bumped, to an exact patch — not just noted as a mismatch.**
+The Dockerfile's build stage went `golang:1.23-alpine` → `golang:1.27.2-alpine`.
+That is a real change to the file, made in the same commit as the pin, so the image
+the repo builds from and the directive `go.mod` declares both say 1.27.
+
+Two things about the shape of this, recorded because it was raised as a
+two-file-sync concern and the answer is not the obvious one:
+
+- **There is no second place to sync in this repo.** `nexcommon-go-docker-standards`
+  contains no rule about a `bitbucket-pipelines.yml` `go-test` step or an
+  `EXACT_PATCH_VERSION` pin, and this repo has no CI file at all — no
+  `bitbucket-pipelines.yml`, no `.github/workflows/`. Its only YAML files are
+  `api/openapi.yaml` and `docker-compose.yml`, neither of which names a Go image.
+  So the Dockerfile is the single place the Go image is pinned; there was nothing
+  else to bump and nothing that could drift out of sync with it.
+- **nexcommon itself pins no image to match.** It ships no Dockerfile and no CI
+  config (it is a library), so "match the exact patch nexcommon builds against"
+  has no referent; what it declares is the `go 1.27` language directive in its
+  `go.mod`. `golang:1.27.2` is the exact patch the tree was actually built and
+  tested against here.
+
+The exact-patch pin is kept regardless, as a reproducibility improvement: a
+floating `golang:1.27-alpine` re-resolves on every CI build, so a future 1.27.x
+patch could change the compiler under a green build without any commit saying so.
+`go.mod`'s `go 1.27` directive is a floor, not a patch, so it does not pin this.
+
+**`golang-testing`'s `-race` example is `golang:1.22`, and it cannot run this tree
+any more.** A `go 1.27` directive is enforced, not advisory: 1.22 refuses to build
+the module at all — confirmed by running it, not assumed:
+
+```
+go: go.mod requires go >= 1.27 (running go 1.22.12; GOTOOLCHAIN=local)
+```
+
+That is not a conflict to work around — the standard's example is an image, and the
+image has to be one that can build the module in front of it, which here is
+`golang:1.27.2`. The detector ran there, with cgo and the same `docker`-shim
+harness as Part 7 (no test file touched):
+
+```
+ok  github.com/william22913/sandbox-svc-code/tests            1.056s
+ok  github.com/william22913/sandbox-svc-code/tests/db         5.455s
+ok  github.com/william22913/sandbox-svc-code/tests/dto        1.017s
+ok  github.com/william22913/sandbox-svc-code/tests/endpoint   1.072s
+ok  github.com/william22913/sandbox-svc-code/tests/middleware 1.053s
+ok  github.com/william22913/sandbox-svc-code/tests/service    1.016s
+```
+
+**Verification on the bumped tree**, all in `golang:1.27.2` (the exact image the
+Dockerfile now builds from), in a real container rather than via a locally
+auto-fetched toolchain: `gofmt -l .` empty, `go build -mod=vendor ./...` and
+`go vet -mod=vendor ./...` both rc=0, `go test -mod=vendor ./...` green including
+`tests/db` against a real Postgres, `go test -mod=vendor -race ./...` green across
+the same six packages, and both standard scripts exit 0
+(`verify_generated_go_layout.py`, `verify_bundle_coverage.py` — the latter still
+reporting 26 registered codes against 6 `constanta` and 27 `error` keys).
+
+**`middleware/metrics.go` stays, and its header comment was rewritten.** The file
+no longer exists because nexcommon hardcodes `200` — that is fixed in this pin. It
+stays for the two gaps the fix does not close, both named by
+`nexcommon-go-prometheus-standards`: the library reads its route label through
+`mux.CurrentRoute(r).GetPathTemplate()`, which panics on an unmatched request and
+otherwise falls back to the unbounded `r.URL.Path`; and its response writer
+implements neither `Unwrap` nor `Flush`/`Hijack`, so `http.ResponseController`
+cannot reach the real writer. The comment now leads with those instead of the
+`200` bug, and nothing in the code changed.
