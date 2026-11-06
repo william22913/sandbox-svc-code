@@ -10,7 +10,7 @@ of this pass that could not be exercised.
 | Testcase version | `1` — `docs/FEAT-003/testcase.md` (merged, docs PR 18) |
 | Architecture version | `1` — `docs/FEAT-003/architecture.md` (merged, docs PR 19) |
 | Database version | `1` — `docs/FEAT-003/database.md` |
-| Part PRs | PART-1…PART-4 are delivered together in **one** PR into `feat/FEAT-003`, from branch `feat/FEAT-003-dev-export-favorites-csv`. The PR is opened after this document exists; its title names PART-1…PART-4 and its body lists them. |
+| Part PRs | PART-1…PART-4 are delivered together in **PR #2** into `feat/FEAT-003`, from branch `feat/FEAT-003-dev-export-favorites-csv`. |
 | Branch base | `feat/FEAT-001` — the starting point `architecture.md` names |
 
 ## How to run
