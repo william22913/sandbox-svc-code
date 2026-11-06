@@ -1,6 +1,9 @@
 package dao
 
-import "time"
+import (
+	"database/sql"
+	"time"
+)
 
 // FavoriteItem is one row of the "My Favorites" list: the (user, item) relation
 // joined to the item's *current* catalog state.
@@ -13,6 +16,24 @@ type FavoriteItem struct {
 	Name        string
 	Available   bool
 	FavoritedAt time.Time
+}
+
+// FavoriteExportItem is one row of the CSV export: the same live join as
+// FavoriteItem, plus the three values FEAT-003's header requires and the
+// favorite's optional note.
+//
+// Price is already text: the query applies trim_scale(...)::text so PostgreSQL's
+// arbitrary NUMERIC scale cannot leak trailing zeros into the file (REQ-005,
+// TC-011/TC-012). Note is nullable because the "no note" state is SQL NULL, and
+// an empty cell is how it must render (REQ-008).
+type FavoriteExportItem struct {
+	ItemID      int64
+	Name        string
+	Category    string
+	Price       string
+	Available   bool
+	FavoritedAt time.Time
+	Note        sql.NullString
 }
 
 // AddOutcome is what favoriteDAO.Add did. The three cases are genuinely

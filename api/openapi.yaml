@@ -4,18 +4,24 @@ info:
   title: sandbox-svc
   version: 1.0.0
   description: |
-    sandbox-svc — the favorite-items feature (FEAT-001).
+    sandbox-svc — the favorite-items feature (FEAT-001) and the CSV export
+    (FEAT-003).
 
-    Three routes: favorite an item, list your favorites, un-favorite one. Every
-    route acts on the calling user's own rows only; the user is taken from the
-    access token, never from the request, so no route accepts a user id.
+    Four routes: favorite an item, list your favorites, un-favorite one, and
+    export your favorites as a CSV download. Every route acts on the calling
+    user's own rows only; the user is taken from the access token, never from
+    the request, so no route accepts a user id.
 
-    Paths, methods and tags are emitted by nexcommon's own generator
-    (`GenerateSwaggerDocs`, served at `/swagger/swagger.yaml`), so they cannot
-    drift from the routes the service registers. What is authored on top of it
-    here is the response side: the `{success, header, payload}` envelope, the
-    per-status coverage, the business error codes, and examples taken from the
-    real DTOs — none of which the generator can see.
+    Paths, methods and tags for the three JSON routes are emitted by
+    nexcommon's own generator (`GenerateSwaggerDocs`, served at
+    `/swagger/swagger.yaml`), so they cannot drift from the routes the service
+    registers. `GET /v1/favorites/export` is the exception: it is registered
+    directly on the mux router, because the response is a file with its own
+    headers rather than the JSON envelope, so the generator cannot see it and
+    this document is its only contract. The response side of every route — the
+    `{success, header, payload}` envelope, the per-status coverage, the
+    business error codes, and examples taken from the real DTOs — is authored
+    here for the same reason.
 
 servers:
   - url: http://localhost:{port}
@@ -112,6 +118,69 @@ paths:
                           name: "Item 1"
                           available: true
                           favorited_at: "2026-10-11T00:00:00.000000Z"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/Internal'
+
+  /v1/favorites/export:
+    get:
+      tags: [Favorite]
+      operationId: exportFavorites
+      summary: Export the calling user's favorites as CSV
+      description: |
+        Returns the calling user's current favorites as a downloadable CSV
+        attachment. Read-only, and scoped by construction to the auth context's
+        user id: no query parameter, path parameter, body field or header can
+        select another user, and `?user_id=` / `X-User-Id` are simply unbound.
+
+        The file is UTF-8 with a BOM, uses CRLF record terminators, a comma
+        delimiter and RFC 4180 quoting (a field containing a comma, double
+        quote, CR or LF is quoted, and embedded quotes are doubled). The header
+        row is exactly `item_id,name,category,price,available,favorited_at,note`.
+        `price` is a raw number with no currency symbol, grouping or rounding;
+        `available` is `Tersedia` or `Tidak Tersedia`; `favorited_at` is the
+        UTC date as `YYYY-MM-DD`; an absent or empty note is an empty cell. Any
+        `name`, `category` or `note` beginning with `=`, `+`, `-` or `@` is
+        prefixed with an apostrophe so a spreadsheet cannot execute it as a
+        formula.
+
+        There is no paging and no filtering: every favorite is included,
+        newest-favorited first, in the same order as `GET /v1/favorites`. Zero
+        favorites is a valid `200` with a header-only file, never an error.
+
+        This route is registered directly on the mux router rather than through
+        nexcommon's generator, so it does not appear in `/swagger/swagger.yaml`;
+        this document is its contract.
+      responses:
+        '200':
+          description: The caller's favorites as a CSV file (header-only when empty).
+          headers:
+            Content-Disposition:
+              description: A quoted attachment filename with the caller's user id and the UTC export date.
+              schema:
+                type: string
+              example: 'attachment; filename="favorites-1-2026-11-05.csv"'
+            Cache-Control:
+              description: Always `no-store` — the body is one user's personal data.
+              schema:
+                type: string
+              example: no-store
+          content:
+            text/csv:
+              schema:
+                type: string
+                format: binary
+              examples:
+                one_favorite:
+                  summary: BOM + header + one row (CRLF line endings)
+                  value: |
+                    ﻿item_id,name,category,price,available,favorited_at,note
+                    1,Notebook,Office,19.99,Tersedia,2026-04-09,Buy more
+                empty:
+                  summary: A user with no favorites — header only
+                  value: |
+                    ﻿item_id,name,category,price,available,favorited_at,note
         '401':
           $ref: '#/components/responses/Unauthorized'
         '500':

@@ -2,6 +2,7 @@ package server_config
 
 import (
 	"database/sql"
+	"net/http"
 
 	"github.com/go-redis/redis/v7"
 	"github.com/nexsoft-git/nexcommon/bundles"
@@ -45,6 +46,11 @@ type serverAttribute struct {
 	MetricMiddleware mdl.MetricMiddleware
 
 	HealthChecker health.HealthEndpoint
+
+	// FavoriteExportHandler is FEAT-003's raw CSV route. Built in Init() because
+	// it needs the finished service and the shared error formator, and handed
+	// to router.InitHttpService, which registers it outside the wrapped routes.
+	FavoriteExportHandler http.HandlerFunc
 
 	listDAO  listDAO
 	Services services

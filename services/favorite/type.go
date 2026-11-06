@@ -1,6 +1,7 @@
-// Package favorite is FEAT-001's business logic: idempotent favorite (REQ-005),
-// the per-user cap (REQ-007), un-favorite (REQ-003, REQ-008) and the
-// list-with-availability read (REQ-002, REQ-004).
+// Package favorite is this service's favorite business logic: idempotent
+// favorite (FEAT-001 REQ-005), the per-user cap (FEAT-001 REQ-007),
+// un-favorite (FEAT-001 REQ-003, REQ-008), the list-with-availability read
+// (FEAT-001 REQ-002, REQ-004), and the read-only CSV export (FEAT-003).
 //
 // It holds no SQL and writes no HTTP: the DAO owns the statements and
 // nexcommon's controller owns the response envelope.
