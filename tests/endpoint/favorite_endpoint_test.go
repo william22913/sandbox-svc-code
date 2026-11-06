@@ -26,8 +26,21 @@ import (
 
 	"github.com/william22913/sandbox-svc-code/constanta"
 	"github.com/william22913/sandbox-svc-code/endpoint/favorite_endpoint"
+	"github.com/william22913/sandbox-svc-code/router"
 	"github.com/william22913/sandbox-svc-code/services/favorite"
 )
+
+// rawRoutes are api/openapi.yaml operations the service registers directly on
+// the router instead of through nexcommon's HandleFunc, so the generator
+// cannot see them. FEAT-003's CSV route is the only one: it must serve a file,
+// and the wrapper forces application/json.
+//
+// They are exempt from the "documented but not registered" half of the check
+// below — and separately required to be documented, so the exemption cannot
+// hide a spec entry that was forgotten.
+var rawRoutes = map[string]map[string]bool{
+	router.FavoriteExportPath: {"get": true},
+}
 
 // register builds a real controller and registers the real routes against a
 // real mux router. A nil DAO is fine: registration never calls the service.
@@ -213,8 +226,20 @@ func TestOpenAPISpecMatchesRegisteredRoutes(t *testing.T) {
 	}
 	for path, methods := range documented {
 		for method := range methods {
+			if rawRoutes[path][method] {
+				continue
+			}
 			if _, ok := swagger.SwaggerContainer.SwaggerPath[path][method]; !ok {
 				t.Errorf("%s %s is documented but not registered", strings.ToUpper(method), path)
+			}
+		}
+	}
+
+	// The exemption above is only safe if the raw route really is documented.
+	for path, methods := range rawRoutes {
+		for method := range methods {
+			if !documented[path][method] {
+				t.Errorf("%s %s is registered raw but missing from api/openapi.yaml", strings.ToUpper(method), path)
 			}
 		}
 	}

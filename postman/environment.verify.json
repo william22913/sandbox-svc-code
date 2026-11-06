@@ -1,0 +1,47 @@
+{
+  "name": "sandbox-svc verify",
+  "values": [
+    {
+      "key": "baseUrl",
+      "value": "http://app:8080",
+      "type": "default",
+      "enabled": true,
+      "description": "Newman runs inside the compose network, so the service is reached by its compose service name, not localhost."
+    },
+    {
+      "key": "apiKey",
+      "value": "live-user-2-token",
+      "type": "secret",
+      "enabled": true,
+      "description": "The collection-wide token (FEAT-001's three requests). Seeded by tests/live/redis-seed.sh."
+    },
+    {
+      "key": "apiKeyUser1",
+      "value": "live-user-1-token",
+      "type": "secret",
+      "enabled": true,
+      "description": "User 1: the four seeded favorites the export body is asserted against."
+    },
+    {
+      "key": "apiKeyUser3",
+      "value": "live-user-3-token",
+      "type": "secret",
+      "enabled": true,
+      "description": "User 3: no favorites, so the export must be a header-only file."
+    },
+    {
+      "key": "invalidToken",
+      "value": "live-unseeded-token",
+      "type": "default",
+      "enabled": true,
+      "description": "Not in Redis. Deliberately absent from the seed, so the 401 path is exercised with a real miss."
+    },
+    {
+      "key": "item_id",
+      "value": "2",
+      "type": "default",
+      "enabled": true
+    }
+  ],
+  "_postman_variable_scope": "environment"
+}

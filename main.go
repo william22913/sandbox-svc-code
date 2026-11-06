@@ -24,6 +24,7 @@ func main() {
 		attribute.MetricMiddleware,
 		attribute.Validator.HttpController,
 		attribute.HealthChecker,
+		attribute.FavoriteExportHandler,
 	)
 
 	// Route registration must precede StartService, which generates the swagger

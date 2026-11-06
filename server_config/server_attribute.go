@@ -15,6 +15,7 @@ import (
 	"github.com/nexsoft-git/nexlogger"
 
 	"github.com/william22913/sandbox-svc-code/config"
+	"github.com/william22913/sandbox-svc-code/endpoint/favorite_endpoint"
 	"github.com/william22913/sandbox-svc-code/middleware"
 )
 
@@ -132,6 +133,15 @@ func (s *serverAttribute) Init() (err error) {
 
 	s.InitDAO()
 	s.InitServices()
+
+	// FEAT-003's handler is raw rather than wrapped, so it is built here with
+	// the service and the shared formator instead of going through
+	// InitEndpoint. Registration happens in router.InitHttpService.
+	s.FavoriteExportHandler = favorite_endpoint.NewExportHandler(
+		s.Validator.HttpController,
+		s.Services.Favorite,
+		s.errorFormator,
+	)
 
 	return
 }

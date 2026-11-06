@@ -20,6 +20,14 @@ import (
 // decides how much memory the process allocates.
 const maxRequestBodyBytes = 1 << 20 // 1 MiB
 
+// FavoriteExportPath is FEAT-003's read-only CSV route.
+//
+// It is registered directly on the router rather than through nexcommon's
+// HandleFunc: the response is a file with its own headers, not the JSON
+// envelope the wrapper forces. The constant lives here because
+// favorite_endpoint already imports router, and the reverse would be a cycle.
+const FavoriteExportPath = V1PrefixPath + "/favorites/export"
+
 var router *mux.Router
 
 func InitHttpService(
@@ -27,6 +35,7 @@ func InitHttpService(
 	metricMiddleware mdl.MetricMiddleware,
 	httpValidator *http_validator.HTTPController,
 	healthChecker health.HealthEndpoint,
+	exportHandler http.HandlerFunc,
 ) {
 	router = mux.NewRouter()
 	httpValidator.Router(router)
@@ -35,6 +44,13 @@ func InitHttpService(
 	// restricted by the deployment, not by a route validator.
 	router.HandleFunc("/metrics", promhttp.Handler().ServeHTTP).Methods(http.MethodGet)
 	router.HandleFunc("/v1/health", healthChecker.CheckHealthConnection).Methods(http.MethodGet)
+
+	// FEAT-003's CSV route. Registered on the same router as everything else,
+	// so router.Use(metricMiddleware.Serve) below observes it with no separate
+	// wiring, and so it cannot be shadowed by another entity's path.
+	if exportHandler != nil {
+		router.HandleFunc(FavoriteExportPath, exportHandler).Methods(http.MethodGet)
+	}
 
 	router.Use(metricMiddleware.Serve)
 }

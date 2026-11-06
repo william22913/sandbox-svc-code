@@ -27,6 +27,13 @@ type FavoriteDAO interface {
 	// List returns the user's favorites with each item's current catalog state.
 	List(userID int64) ([]FavoriteItem, error)
 
+	// ListForExport returns the user's favorites with the seven values the CSV
+	// writes, in the same order as List, so the file matches GET /favorites
+	// (REQ-003, REQ-019). It is a separate method rather than an overload of
+	// List because it reads the two FEAT-003 catalog columns and the note,
+	// which the list response deliberately does not expose.
+	ListForExport(userID int64) ([]FavoriteExportItem, error)
+
 	// ItemExists reports whether the catalog item exists at all. Used to answer
 	// a bad item_id with a real 404 instead of letting the foreign key raise a
 	// constraint violation, which the formator would turn into a generic 500.
@@ -191,6 +198,65 @@ func (d *favoriteDAO) List(userID int64) ([]FavoriteItem, error) {
 	}
 
 	return favorites, nil
+}
+
+func (d *favoriteDAO) ListForExport(userID int64) ([]FavoriteExportItem, error) {
+	// The same LEFT JOIN and COALESCE shape as List, for the same reason
+	// (REQ-004: a discontinued favorite must not vanish), plus the export's
+	// three extra columns. Ordering is identical so the file matches
+	// GET /favorites row for row, including ties (REQ-003, TC-008).
+	//
+	// price is rendered by PostgreSQL: trim_scale strips redundant trailing
+	// zeros while preserving the exact value, and ::text keeps it a raw number
+	// with no symbol and no grouping (REQ-005). The COALESCE keeps a missing
+	// catalog row from producing an empty price cell.
+	rows, err := d.db.QueryContext(context.Background(),
+		`SELECT f.item_id,
+		        COALESCE(c.name, ''),
+		        COALESCE(c.category, ''),
+		        COALESCE(trim_scale(c.price), 0)::text,
+		        COALESCE(c.is_available, FALSE),
+		        f.created_at,
+		        f.note
+		   FROM favorite_items f
+		   LEFT JOIN catalog_items c ON c.id = f.item_id
+		  WHERE f.user_id = $1
+		  ORDER BY f.created_at DESC, f.item_id ASC`,
+		userID,
+	)
+	if err != nil {
+		log.Error().Err(err).Caller().Msg("error when query favorites for export")
+		return nil, err
+	}
+	defer func() {
+		if err := rows.Close(); err != nil {
+			log.Error().Err(err).Caller().Msg("error when close export rows")
+		}
+	}()
+
+	items := make([]FavoriteExportItem, 0)
+	for rows.Next() {
+		var item FavoriteExportItem
+		if err := rows.Scan(
+			&item.ItemID,
+			&item.Name,
+			&item.Category,
+			&item.Price,
+			&item.Available,
+			&item.FavoritedAt,
+			&item.Note,
+		); err != nil {
+			log.Error().Err(err).Caller().Msg("error when scan export row")
+			return nil, err
+		}
+		items = append(items, item)
+	}
+	if err := rows.Err(); err != nil {
+		log.Error().Err(err).Caller().Msg("error when iterate export rows")
+		return nil, err
+	}
+
+	return items, nil
 }
 
 func (d *favoriteDAO) ItemExists(itemID int64) (bool, error) {
