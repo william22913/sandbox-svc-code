@@ -36,6 +36,22 @@ type RemoveFavoriteResponse struct {
 	ItemID int64 `json:"item_id"`
 }
 
+// FavoriteSummaryResponse is GET /favorites/summary's payload: the caller's
+// favorite count and how many of those items are currently unavailable.
+//
+// Both are integers, never the FEAT-004 badge's "99+" string — the cap is a
+// display rule for the badge and does not apply to the summary (REQ-005).
+type FavoriteSummaryResponse struct {
+	Total        int64 `json:"total"`
+	Discontinued int64 `json:"discontinued"`
+}
+
+// NewFavoriteSummary builds the payload. No clamping: the DAO's single
+// statement guarantees 0 <= discontinued <= total.
+func NewFavoriteSummary(total, discontinued int64) FavoriteSummaryResponse {
+	return FavoriteSummaryResponse{Total: total, Discontinued: discontinued}
+}
+
 // FavoriteList is GET /favorites' payload. A wrapper rather than a bare array
 // so FEAT-002's per-favorite note (and the deferred sort/filter pass) can add a
 // sibling field or a page envelope without changing this response's shape.

@@ -1,4 +1,5 @@
-// Package favorite_endpoint registers FEAT-001's three HTTP routes.
+// Package favorite_endpoint registers the favorites HTTP routes: FEAT-001's
+// three plus FEAT-005's summary.
 //
 // Each route is a thin adapter: it names the menu (which is what gates the body
 // DTO's validation), the path parameters, and the response DTO, then hands the
@@ -50,6 +51,7 @@ func (e *FavoriteEndpoint) RegisterEndpoint() {
 	e.registerAdd()
 	e.registerRemove()
 	e.registerList()
+	e.registerSummary()
 }
 
 // POST /v1/favorites — REQ-001, REQ-005, REQ-007.
@@ -96,6 +98,32 @@ func (e *FavoriteEndpoint) registerRemove() {
 					DTOOut(http_validator.NewDTOParam(svcout.RemoveFavoriteResponse{})),
 			),
 			http.MethodDelete,
+		),
+	)
+}
+
+// GET /v1/favorites/summary — FEAT-005 REQ-001..REQ-004.
+//
+// Plain WrapService like the list: the route takes no body and no parameters,
+// which is what makes "no request input can influence the counts" structural
+// rather than a validation rule. The {item_id} route above is DELETE-only, so
+// a GET on this literal path cannot be captured by it.
+func (e *FavoriteEndpoint) registerSummary() {
+	e.httpValidator.HandleFunc(
+		http_validator.NewHandleFuncParam(
+			Path+"/summary",
+			e.httpValidator.WrapService(
+				http_validator.NewWarpServiceParam(
+					e.srv,
+					e.srv.Summary,
+					e.httpValidator.UserAccessValidator(),
+				).
+					Tags(constanta.TagFavorite).
+					OperationID("getFavoritesSummary").
+					Description("Count the calling user's favorites and how many of those items are currently unavailable in the catalog.").
+					DTOOut(http_validator.NewDTOParam(svcout.FavoriteSummaryResponse{})),
+			),
+			http.MethodGet,
 		),
 	)
 }

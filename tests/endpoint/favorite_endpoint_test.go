@@ -90,6 +90,14 @@ func TestRoutesAreRegisteredWithTheirMethods(t *testing.T) {
 		t.Errorf("%s answers DELETE, which must live on the item path", favorite_endpoint.Path)
 	}
 
+	summary := got[favorite_endpoint.Path+"/summary"]
+	if !contains(summary, http.MethodGet) {
+		t.Errorf("%s/summary answers %v, want GET", favorite_endpoint.Path, summary)
+	}
+	if len(summary) != 1 {
+		t.Errorf("%s/summary answers %v, want GET alone", favorite_endpoint.Path, summary)
+	}
+
 	itemPath := favorite_endpoint.Path + "/{" + favorite.PathItemID + "}"
 	item := got[itemPath]
 	if !contains(item, http.MethodDelete) {

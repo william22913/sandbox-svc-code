@@ -36,6 +36,19 @@ type FavoriteExportItem struct {
 	Note        sql.NullString
 }
 
+// FavoriteSummary is the aggregate behind GET /favorites/summary: how many
+// favorites the user owns, and how many of those items are currently
+// unavailable in the catalog.
+//
+// Total deliberately counts every owned row, including discontinued ones
+// (REQ-003); Discontinued is the subset of those rows whose catalog item is
+// soft-marked unavailable (REQ-004). Both come from one statement, so they are
+// read from the same snapshot and cannot disagree.
+type FavoriteSummary struct {
+	Total        int64
+	Discontinued int64
+}
+
 // AddOutcome is what favoriteDAO.Add did. The three cases are genuinely
 // distinct to the caller: two are success responses (REQ-005 makes a repeat
 // favorite idempotent, not an error) and one is REQ-007's cap failure.

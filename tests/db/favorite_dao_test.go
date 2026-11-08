@@ -328,6 +328,220 @@ func TestListIsEmptyNotNilWithoutFavorites(t *testing.T) {
 	}
 }
 
+// seedBulkFavorites seeds count favorites for userID over item ids from base,
+// the last `discontinued` of them unavailable. Bulk SQL rather than Add loops:
+// TC-006 needs 500 rows and the cap policy is FEAT-001's concern, already
+// tested above. Callers pass distinct bases so two users never share item rows.
+func seedBulkFavorites(t *testing.T, userID, base, count, discontinued int64) {
+	t.Helper()
+	available := count - discontinued
+
+	if _, err := db.Exec(
+		`INSERT INTO catalog_items (id, name, is_available)
+		 SELECT g, 'item-' || g, g < $1
+		   FROM generate_series($2::bigint, $3::bigint) g`,
+		base+available, base, base+count-1,
+	); err != nil {
+		t.Fatalf("bulk-seeding catalog items: %v", err)
+	}
+	if _, err := db.Exec(
+		`INSERT INTO favorite_items (user_id, item_id)
+		 SELECT $1, g FROM generate_series($2::bigint, $3::bigint) g`,
+		userID, base, base+count-1,
+	); err != nil {
+		t.Fatalf("bulk-seeding favorites: %v", err)
+	}
+}
+
+// TestSummary_TC001_CountsTotalAndDiscontinued — REQ-003, REQ-004: one
+// aggregate over the user's rows, with availability as a filter on the
+// discontinued count only.
+func TestSummary_TC001_CountsTotalAndDiscontinued(t *testing.T) {
+	testdb.Truncate(t, db)
+	seedUser(t, 1)
+	seedItem(t, 10, true)
+	seedItem(t, 11, true)
+	seedItem(t, 12, false)
+	for _, itemID := range []int64{10, 11, 12} {
+		if _, err := favorite.Add(1, itemID, 500); err != nil {
+			t.Fatalf("seeding favorite %d: %v", itemID, err)
+		}
+	}
+
+	got, err := favorite.Summary(1)
+	if err != nil {
+		t.Fatalf("Summary: %v", err)
+	}
+	if got.Total != 3 || got.Discontinued != 1 {
+		t.Fatalf("summary = %+v, want {Total:3 Discontinued:1}", got)
+	}
+}
+
+// TestSummary_TC002_ZeroFavorites — REQ-012: COUNT over no rows is 0/0, not an
+// error and not a missing row.
+func TestSummary_TC002_ZeroFavorites(t *testing.T) {
+	testdb.Truncate(t, db)
+	seedUser(t, 1)
+
+	got, err := favorite.Summary(1)
+	if err != nil {
+		t.Fatalf("Summary: %v", err)
+	}
+	if got.Total != 0 || got.Discontinued != 0 {
+		t.Fatalf("summary = %+v, want {Total:0 Discontinued:0}", got)
+	}
+}
+
+// TestSummary_TC003_SingleAvailableFavorite — the lower non-zero boundary.
+func TestSummary_TC003_SingleAvailableFavorite(t *testing.T) {
+	testdb.Truncate(t, db)
+	seedUser(t, 1)
+	seedItem(t, 10, true)
+	if _, err := favorite.Add(1, 10, 500); err != nil {
+		t.Fatalf("seeding favorite: %v", err)
+	}
+
+	got, err := favorite.Summary(1)
+	if err != nil {
+		t.Fatalf("Summary: %v", err)
+	}
+	if got.Total != 1 || got.Discontinued != 0 {
+		t.Fatalf("summary = %+v, want {Total:1 Discontinued:0}", got)
+	}
+}
+
+// TestSummary_TC004_MixedPartition — 5 rows, 2 discontinued: total is not
+// availability-filtered and discontinued is exactly the marked subset.
+func TestSummary_TC004_MixedPartition(t *testing.T) {
+	testdb.Truncate(t, db)
+	seedUser(t, 1)
+	seedBulkFavorites(t, 1, 5000, 5, 2)
+
+	got, err := favorite.Summary(1)
+	if err != nil {
+		t.Fatalf("Summary: %v", err)
+	}
+	if got.Total != 5 || got.Discontinued != 2 {
+		t.Fatalf("summary = %+v, want {Total:5 Discontinued:2}", got)
+	}
+}
+
+// TestSummary_TC005_AllDiscontinuedEqual — REQ-014: no row leaves the total.
+func TestSummary_TC005_AllDiscontinuedEqual(t *testing.T) {
+	testdb.Truncate(t, db)
+	seedUser(t, 1)
+	seedBulkFavorites(t, 1, 5000, 3, 3)
+
+	got, err := favorite.Summary(1)
+	if err != nil {
+		t.Fatalf("Summary: %v", err)
+	}
+	if got.Total != 3 || got.Discontinued != 3 {
+		t.Fatalf("summary = %+v, want {Total:3 Discontinued:3}", got)
+	}
+}
+
+// TestSummary_TC006_FiveHundredCap — REQ-009 at the FEAT-001 maximum.
+func TestSummary_TC006_FiveHundredCap(t *testing.T) {
+	testdb.Truncate(t, db)
+	seedUser(t, 1)
+	seedBulkFavorites(t, 1, 5000, 500, 125)
+
+	got, err := favorite.Summary(1)
+	if err != nil {
+		t.Fatalf("Summary: %v", err)
+	}
+	if got.Total != 500 || got.Discontinued != 125 {
+		t.Fatalf("summary = %+v, want {Total:500 Discontinued:125}", got)
+	}
+}
+
+// TestSummary_TC007_AboveNinetyNineNotCapped — the badge's 99+ rule is not in
+// the query: 100 rows come back as 100.
+func TestSummary_TC007_AboveNinetyNineNotCapped(t *testing.T) {
+	testdb.Truncate(t, db)
+	seedUser(t, 1)
+	seedBulkFavorites(t, 1, 5000, 100, 12)
+
+	got, err := favorite.Summary(1)
+	if err != nil {
+		t.Fatalf("Summary: %v", err)
+	}
+	if got.Total != 100 || got.Discontinued != 12 {
+		t.Fatalf("summary = %+v, want {Total:100 Discontinued:12}", got)
+	}
+}
+
+// TestSummary_TC008_SingleDiscontinued — the minimum equal non-zero case.
+func TestSummary_TC008_SingleDiscontinued(t *testing.T) {
+	testdb.Truncate(t, db)
+	seedUser(t, 1)
+	seedBulkFavorites(t, 1, 5000, 1, 1)
+
+	got, err := favorite.Summary(1)
+	if err != nil {
+		t.Fatalf("Summary: %v", err)
+	}
+	if got.Total != 1 || got.Discontinued != 1 {
+		t.Fatalf("summary = %+v, want {Total:1 Discontinued:1}", got)
+	}
+}
+
+// TestSummary_TC011_IsolatedPerUser — REQ-010: the WHERE clause is the whole
+// isolation guarantee, so disjoint users must get disjoint answers.
+func TestSummary_TC011_IsolatedPerUser(t *testing.T) {
+	testdb.Truncate(t, db)
+	seedUser(t, 1)
+	seedUser(t, 2)
+	seedBulkFavorites(t, 1, 5000, 2, 0)
+
+	// User 2's rows use a different item range so neither set is shared.
+	seedBulkFavorites(t, 2, 6000, 6, 4)
+
+	gotA, err := favorite.Summary(1)
+	if err != nil {
+		t.Fatalf("Summary as user 1: %v", err)
+	}
+	gotB, err := favorite.Summary(2)
+	if err != nil {
+		t.Fatalf("Summary as user 2: %v", err)
+	}
+
+	if gotA.Total != 2 || gotA.Discontinued != 0 {
+		t.Errorf("user 1 summary = %+v, want {2,0}", gotA)
+	}
+	if gotB.Total != 6 || gotB.Discontinued != 4 {
+		t.Errorf("user 2 summary = %+v, want {6,4}", gotB)
+	}
+}
+
+// TestSummary_TC014_ReflectsCatalogChangesAtRequestTime — REQ-009: the count is
+// derived per request, so a soft-mark between calls changes only the
+// discontinued figure and no favorite row moves.
+func TestSummary_TC014_ReflectsCatalogChangesAtRequestTime(t *testing.T) {
+	testdb.Truncate(t, db)
+	seedUser(t, 1)
+	seedBulkFavorites(t, 1, 5000, 3, 0)
+
+	first, err := favorite.Summary(1)
+	if err != nil {
+		t.Fatalf("first Summary: %v", err)
+	}
+	if first.Total != 3 || first.Discontinued != 0 {
+		t.Fatalf("first summary = %+v, want {3,0}", first)
+	}
+
+	exec(t, `UPDATE catalog_items SET is_available = FALSE WHERE id = 5000`)
+
+	second, err := favorite.Summary(1)
+	if err != nil {
+		t.Fatalf("second Summary: %v", err)
+	}
+	if second.Total != 3 || second.Discontinued != 1 {
+		t.Fatalf("second summary = %+v, want {3,1} — the change was not read live", second)
+	}
+}
+
 // TestAddCapHoldsUnderConcurrentRequests — REQ-007's real guarantee. Without the
 // per-user row lock in Add, the count-then-insert pre-check lets concurrent
 // requests each read the same count and all insert, pushing the user past the

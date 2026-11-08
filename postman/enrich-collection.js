@@ -9,7 +9,7 @@
 //   npx openapi-to-postmanv2 -s api/openapi.yaml -o postman/collection.json -p -O folderStrategy=Tags
 //   node postman/enrich-collection.js
 //
-// Three things are added:
+// Four things are added:
 //
 //   1. The collection-level tests. Structural only — a JSON body *when the route
 //      answers JSON* and a sane latency. The export route answers text/csv, so
@@ -19,7 +19,11 @@
 //      token, so it cannot also cover "another user sees only their own rows",
 //      "anonymous" and "invalid token" — those need per-request auth overrides,
 //      which regeneration wipes.
-//   3. The metrics scrape, which is not an API route at all.
+//   3. FEAT-005's summary requests, for the same reason: the seeded totals are
+//      per-user, so the multi-user, ignored-input and 401 cases need their own
+//      tokens/overrides. The named FE surface gets its own folder because the
+//      badge tooltip is a screen, not an API tag.
+//   4. The metrics scrape, which is not an API route at all.
 //
 // Per-route expectations are asserted in the scripts below and in Newman's own
 // exit code, not baked into the collection-level test as business values.
@@ -34,6 +38,8 @@ const collection = JSON.parse(fs.readFileSync(file, 'utf8'))
 // them. Regeneration wipes them anyway; this only matters if someone runs the
 // script twice by mistake.
 const INJECTED = '__feat003'
+const INJECTED_SUMMARY = '__feat005'
+const INJECTED_MARKERS = [INJECTED, INJECTED_SUMMARY]
 
 const script = (lines) => ({
   listen: 'test',
@@ -199,6 +205,138 @@ const exportRequests = [
   },
 ]
 
+const summaryURL = (query) => {
+  const pairs = query || []
+  const suffix = pairs.length
+    ? '?' + pairs.map((pair) => `${pair.key}=${encodeURIComponent(pair.value)}`).join('&')
+    : ''
+
+  return {
+    raw: '{{baseUrl}}/v1/favorites/summary' + suffix,
+    host: ['{{baseUrl}}'],
+    path: ['v1', 'favorites', 'summary'],
+    query: pairs,
+    variable: [],
+  }
+}
+
+// Body-shape assertion shared by the summary requests: the payload is exactly
+// the two integers, and nothing else leaked into it.
+const summaryAssertions = (total, discontinued) => [
+  "pm.test('status 200', () => pm.response.to.have.status(200))",
+  "pm.test('success envelope with exactly the expected integers', () => {",
+  '  const body = pm.response.json()',
+  '  pm.expect(body.success).to.be.true',
+  `  pm.expect(body.payload).to.eql({ total: ${total}, discontinued: ${discontinued} })`,
+  '})',
+  "pm.test('Content-Type is application/json', () => {",
+  "  pm.expect(pm.response.headers.get('Content-Type')).to.include('application/json')",
+  '})',
+]
+
+// tests/live/postgres-seed.sql: user 1 owns items 101-105 and item 102 is
+// discontinued, so {5,1}; user 3 owns nothing, so {0,0}.
+const summaryRequests = [
+  {
+    name: `${INJECTED_SUMMARY} Summary — user 1 (5 total, 1 discontinued)`,
+    request: {
+      method: 'GET',
+      header: [],
+      url: summaryURL(),
+      auth: bearer('{{apiKeyUser1}}'),
+      description:
+        'Seed: user 1 owns five favorites and item 102 is discontinued. Both ' +
+        'counts are JSON integers; total is not availability-filtered.',
+    },
+    event: [script(summaryAssertions(5, 1))],
+  },
+  {
+    name: `${INJECTED_SUMMARY} Summary — user 3 (zero favorites)`,
+    request: {
+      method: 'GET',
+      header: [],
+      url: summaryURL(),
+      auth: bearer('{{apiKeyUser3}}'),
+      description: 'Zero favorites is a 200 with both values 0, never 404 or an empty body.',
+    },
+    event: [script(summaryAssertions(0, 0))],
+  },
+  {
+    name: `${INJECTED_SUMMARY} Summary — caller-supplied user id and counts are ignored`,
+    request: {
+      method: 'GET',
+      header: [{ key: 'X-User-Id', value: '1' }],
+      url: summaryURL([
+        { key: 'user_id', value: '1', disabled: false },
+        { key: 'total', value: '999', disabled: false },
+        { key: 'discontinued', value: '999', disabled: false },
+      ]),
+      auth: bearer('{{apiKeyUser3}}'),
+      description:
+        'User 3 has no favorites. Asking for user 1\'s data and supplying ' +
+        'counts must change nothing — user 1\'s {5,1} must not appear.',
+    },
+    event: [script(summaryAssertions(0, 0))],
+  },
+  {
+    name: `${INJECTED_SUMMARY} Summary — anonymous`,
+    request: {
+      method: 'GET',
+      header: [],
+      url: summaryURL(),
+      auth: { type: 'noauth' },
+    },
+    event: [
+      script([
+        "pm.test('status 401', () => pm.response.to.have.status(401))",
+        "pm.test('shared error envelope, no summary payload', () => {",
+        "  const body = pm.response.json()",
+        '  pm.expect(body.success).to.be.false',
+        "  pm.expect(body.payload.code).to.eql('E-1-CMD-AUT-001')",
+        '  pm.expect(body.payload.total).to.be.undefined',
+        '  pm.expect(body.payload.discontinued).to.be.undefined',
+        '})',
+      ]),
+    ],
+  },
+  {
+    name: `${INJECTED_SUMMARY} Summary — invalid token`,
+    request: {
+      method: 'GET',
+      header: [],
+      url: summaryURL(),
+      auth: bearer('{{invalidToken}}'),
+    },
+    event: [
+      script([
+        "pm.test('status 401', () => pm.response.to.have.status(401))",
+        "pm.test('same envelope code as anonymous', () => {",
+        "  pm.expect(pm.response.json().payload.code).to.eql('E-1-CMD-AUT-001')",
+        '})',
+      ]),
+    ],
+  },
+]
+
+// The named FE surface: the FEAT-004 badge's hover tooltip. One folder per
+// screen, holding the request whose response the tooltip renders.
+const FE_FOLDER = 'AppShell badge tooltip'
+const feRequests = [
+  {
+    name: `${INJECTED_SUMMARY} AppShell badge tooltip — summary shown on hover`,
+    request: {
+      method: 'GET',
+      header: [],
+      url: summaryURL(),
+      auth: bearer('{{apiKeyUser1}}'),
+      description:
+        'What the tooltip renders: `N favorites (M discontinued)` from the ' +
+        'response integers. The badge itself shows N and is out of scope here.',
+    },
+    event: [script(summaryAssertions(5, 1))],
+  },
+]
+
 const metricsRequests = [
   {
     name: `${INJECTED} Scrape metrics`,
@@ -224,6 +362,19 @@ const metricsRequests = [
         "pm.test('a rejected export is observed as 401, not 200', () => {",
         '  pm.expect(body).to.match(/my_app_http_hist_count\\{method="GET",path="\\/v1\\/favorites\\/export",status="401"\\} [1-9]\\d*/)',
         '})',
+        "pm.test('the summary route is observed under its own path template', () => {",
+        '  pm.expect(body).to.match(/my_app_http_hist_count\\{method="GET",path="\\/v1\\/favorites\\/summary",status="200"\\} \\d+/)',
+        '})',
+        "pm.test('a rejected summary is observed as 401, not 200', () => {",
+        '  pm.expect(body).to.match(/my_app_http_hist_count\\{method="GET",path="\\/v1\\/favorites\\/summary",status="401"\\} [1-9]\\d*/)',
+        '})',
+        "pm.test('exactly one summary 200 sample — no duplicate labels', () => {",
+        '  const matches = body.match(/^my_app_http_hist_count\\{method="GET",path="\\/v1\\/favorites\\/summary",status="200"\\} \\d+$/gm) || []',
+        '  pm.expect(matches.length).to.eql(1)',
+        '})',
+        "pm.test('the summary route is not relabelled with a query string', () => {",
+        '  pm.expect(body).to.not.match(/path="\\/v1\\/favorites\\/summary\\?/)',
+        '})',
         "pm.test('/metrics does not count itself', () => {",
         '  pm.expect(body).to.not.match(/path="\\/metrics"/)',
         '})',
@@ -242,10 +393,19 @@ const generatedExport = (request) =>
   request.request?.method === 'GET' &&
   (request.request?.url?.path || []).join('/') === 'v1/favorites/export'
 
-collection.item = (collection.item || []).filter((folder) => folder.name !== 'Observability')
+const generatedSummary = (request) =>
+  request.request?.method === 'GET' &&
+  (request.request?.url?.path || []).join('/') === 'v1/favorites/summary'
+
+collection.item = (collection.item || []).filter(
+  (folder) => folder.name !== 'Observability' && folder.name !== FE_FOLDER
+)
 for (const folder of collection.item) {
   folder.item = (folder.item || []).filter(
-    (request) => !String(request.name).startsWith(INJECTED) && !generatedExport(request)
+    (request) =>
+      !INJECTED_MARKERS.some((marker) => String(request.name).startsWith(marker)) &&
+      !generatedExport(request) &&
+      !generatedSummary(request)
   )
 }
 
@@ -258,11 +418,19 @@ const after = favoriteFolder.item.findIndex((request) => request.name === "List 
 if (after === -1) {
   throw new Error('could not find the favorites list request to anchor the export requests to')
 }
-favoriteFolder.item.splice(after + 1, 0, ...exportRequests)
+favoriteFolder.item.splice(after + 1, 0, ...summaryRequests, ...exportRequests)
+
+collection.item.push({
+  name: FE_FOLDER,
+  description:
+    'The FEAT-004 badge on the AppShell: hovering it shows the FEAT-005 summary as `N favorites (M discontinued)`.',
+  item: feRequests,
+})
 
 collection.item.push({
   name: 'Observability',
-  description: 'The Prometheus scrape. Not an API route; used to verify the export is measured.',
+  description:
+    'The Prometheus scrape. Not an API route; used to verify the export and summary routes are measured.',
   item: metricsRequests,
 })
 
@@ -308,6 +476,7 @@ for (const folder of collection.item || []) {
 
 fs.writeFileSync(file, JSON.stringify(collection, null, 2) + '\n')
 console.log(
-  `added collection-level tests, ${exportRequests.length} export requests and the metrics scrape; ` +
+  `added collection-level tests, ${summaryRequests.length} summary requests, ` +
+    `${feRequests.length} FE-screen request, ${exportRequests.length} export requests and the metrics scrape; ` +
     `rewrote ${rewritten} path-parameter placeholder(s)`
 )

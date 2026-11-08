@@ -4,15 +4,15 @@ info:
   title: sandbox-svc
   version: 1.0.0
   description: |
-    sandbox-svc — the favorite-items feature (FEAT-001) and the CSV export
-    (FEAT-003).
+    sandbox-svc — the favorite-items feature (FEAT-001), the CSV export
+    (FEAT-003), and the favorites summary (FEAT-005).
 
-    Four routes: favorite an item, list your favorites, un-favorite one, and
-    export your favorites as a CSV download. Every route acts on the calling
-    user's own rows only; the user is taken from the access token, never from
-    the request, so no route accepts a user id.
+    Five routes: favorite an item, list your favorites, un-favorite one,
+    summarize your favorites, and export them as a CSV download. Every route
+    acts on the calling user's own rows only; the user is taken from the access
+    token, never from the request, so no route accepts a user id.
 
-    Paths, methods and tags for the three JSON routes are emitted by
+    Paths, methods and tags for the four JSON routes are emitted by
     nexcommon's own generator (`GenerateSwaggerDocs`, served at
     `/swagger/swagger.yaml`), so they cannot drift from the routes the service
     registers. `GET /v1/favorites/export` is the exception: it is registered
@@ -118,6 +118,51 @@ paths:
                           name: "Item 1"
                           available: true
                           favorited_at: "2026-10-11T00:00:00.000000Z"
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '500':
+          $ref: '#/components/responses/Internal'
+
+  /v1/favorites/summary:
+    get:
+      tags: [Favorite]
+      operationId: getFavoritesSummary
+      summary: Summarize the calling user's favorites
+      description: |
+        Returns how many favorites the calling user owns (`total`) and how many
+        of those items are currently unavailable in the catalog
+        (`discontinued`). `total` counts every owned row, discontinued or not;
+        `discontinued` is a subset of it, so `0 <= discontinued <= total`.
+
+        Both values are derived at request time — nothing is stored or cached —
+        and availability is read live from the catalog, so an item discontinued
+        after it was favorited changes the next response with no change to any
+        favorite row.
+
+        The route takes no parameters and no body; the user is the token's,
+        which makes the counts impossible to widen or override from the request.
+        Zero favorites is a valid `200` with both values `0`.
+
+        Unlike the FEAT-004 badge, the API never applies a `99+` cap: 100
+        favorites is `total: 100`.
+      responses:
+        '200':
+          description: The caller's favorite totals.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FavoriteSummaryEnvelope'
+              examples:
+                mixed:
+                  value:
+                    success: true
+                    header: { request_id: "b1e3", version: "1.0.0", timestamp: "2026-10-11T00:00:00.000000Z" }
+                    payload: { total: 5, discontinued: 1 }
+                empty:
+                  value:
+                    success: true
+                    header: { request_id: "b1e3", version: "1.0.0", timestamp: "2026-10-11T00:00:00.000000Z" }
+                    payload: { total: 0, discontinued: 0 }
         '401':
           $ref: '#/components/responses/Unauthorized'
         '500':
@@ -346,6 +391,23 @@ components:
           type: string
           format: date-time
 
+    FavoriteSummary:
+      type: object
+      required: [total, discontinued]
+      properties:
+        total:
+          type: integer
+          format: int64
+          minimum: 0
+          description: |
+            Every favorite the caller owns, including items discontinued since
+            they were favorited. Never capped at the badge's `99+`.
+        discontinued:
+          type: integer
+          format: int64
+          minimum: 0
+          description: The subset of `total` whose catalog item is currently unavailable.
+
     FavoriteList:
       type: object
       required: [favorites]
@@ -390,6 +452,18 @@ components:
           $ref: '#/components/schemas/Header'
         payload:
           $ref: '#/components/schemas/RemoveFavoriteResponse'
+
+    FavoriteSummaryEnvelope:
+      type: object
+      required: [success, header, payload]
+      properties:
+        success:
+          type: boolean
+          const: true
+        header:
+          $ref: '#/components/schemas/Header'
+        payload:
+          $ref: '#/components/schemas/FavoriteSummary'
 
     FavoriteListEnvelope:
       type: object
