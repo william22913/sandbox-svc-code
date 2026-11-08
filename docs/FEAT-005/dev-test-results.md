@@ -92,6 +92,9 @@ app / postgres / postgres-seed / redis / redis-seed — all running, healthy
 Newman exit code 0: 14 requests, 25 test-scripts, 64 assertions, 0 failed
 ```
 
+Re-run on the final tree (after the test fixes below): **PASS (newman, 22s)**,
+same 14 requests / 64 assertions, 0 failed.
+
 The stack is the shipped `docker-compose.yml` with
 `docker-compose.verify.yml` over it, seeded by `tests/live/postgres-seed.sql`
 and `tests/live/redis-seed.sh`.
