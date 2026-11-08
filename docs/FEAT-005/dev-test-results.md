@@ -2,6 +2,7 @@
 
 Spec version: 1
 Testcase version: 1
+Part PRs: PART-1=https://github.com/william22913/sandbox-svc-code/pull/3, PART-2=https://github.com/william22913/sandbox-svc-code/pull/3
 
 Written by `/go-dev` for `sandbox-svc` / `FEAT-005`. One row per test case with
 its evidence, then the live-stack attempt, the observability check, the
