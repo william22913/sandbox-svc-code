@@ -1,5 +1,8 @@
 # FEAT-005 — Dev Test Results
 
+Spec version: 1
+Testcase version: 1
+
 Written by `/go-dev` for `sandbox-svc` / `FEAT-005`. One row per test case with
 its evidence, then the live-stack attempt, the observability check, the
 deliberate deviations, and what this environment could not execute.
