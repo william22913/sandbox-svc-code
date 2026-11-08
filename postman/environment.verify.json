@@ -20,7 +20,7 @@
       "value": "live-user-1-token",
       "type": "secret",
       "enabled": true,
-      "description": "User 1: the four seeded favorites the export body is asserted against."
+      "description": "User 1: the five seeded favorites the export body and the {5,1} summary are asserted against."
     },
     {
       "key": "apiKeyUser3",

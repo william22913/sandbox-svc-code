@@ -36,18 +36,21 @@ type fakeDAO struct {
 	remove     func(userID, itemID int64) (bool, error)
 	list       func(userID int64) ([]dao.FavoriteItem, error)
 	listExport func(userID int64) ([]dao.FavoriteExportItem, error)
+	summary    func(userID int64) (dao.FavoriteSummary, error)
 
-	addCalls    int
-	addUserID   int64
-	addItemID   int64
-	addLimit    int64
-	removeCalls int
-	removeUser  int64
-	removeItem  int64
-	listCalls   int
-	listUserID  int64
-	exportCalls int
-	exportUser  int64
+	addCalls     int
+	addUserID    int64
+	addItemID    int64
+	addLimit     int64
+	removeCalls  int
+	removeUser   int64
+	removeItem   int64
+	listCalls    int
+	listUserID   int64
+	exportCalls  int
+	exportUser   int64
+	summaryCalls int
+	summaryUser  int64
 }
 
 func (f *fakeDAO) Add(userID, itemID, limit int64) (dao.AddOutcome, error) {
@@ -84,6 +87,15 @@ func (f *fakeDAO) ListForExport(userID int64) ([]dao.FavoriteExportItem, error) 
 		return nil, nil
 	}
 	return f.listExport(userID)
+}
+
+func (f *fakeDAO) Summary(userID int64) (dao.FavoriteSummary, error) {
+	f.summaryCalls++
+	f.summaryUser = userID
+	if f.summary == nil {
+		return dao.FavoriteSummary{}, nil
+	}
+	return f.summary(userID)
 }
 
 func (f *fakeDAO) ItemExists(int64) (bool, error) { return true, nil }

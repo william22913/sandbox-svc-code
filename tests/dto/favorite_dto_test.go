@@ -102,6 +102,33 @@ func TestFavoriteItemMarshalsWithZeroTime(t *testing.T) {
 	}
 }
 
+// TestFavoriteSummaryMarshalsExactIntegers — REQ-002 / TC-001, TC-002, TC-007:
+// the payload is two JSON integers under exactly `total` and `discontinued`,
+// with no string, float, or extra field. The 99+ badge cap must not appear here.
+func TestFavoriteSummaryMarshalsExactIntegers(t *testing.T) {
+	cases := []struct {
+		name         string
+		total        int64
+		discontinued int64
+		want         string
+	}{
+		{"mixed", 3, 1, `{"total":3,"discontinued":1}`},
+		{"zero", 0, 0, `{"total":0,"discontinued":0}`},
+		{"above-99", 100, 12, `{"total":100,"discontinued":12}`},
+		{"all-discontinued", 3, 3, `{"total":3,"discontinued":3}`},
+	}
+
+	for _, tc := range cases {
+		raw, err := json.Marshal(svcout.NewFavoriteSummary(tc.total, tc.discontinued))
+		if err != nil {
+			t.Fatalf("%s: marshal: %v", tc.name, err)
+		}
+		if got := string(raw); got != tc.want {
+			t.Errorf("%s: summary = %s, want %s", tc.name, got, tc.want)
+		}
+	}
+}
+
 // TestErrorSentinelsCarryTheirOwnCode — the DTO layer and the service layer must
 // answer with the codes the bundles carry. With no Formator built (as here) the
 // sentinel renders its raw code, which is exactly the value the bundle guard

@@ -27,6 +27,11 @@ type FavoriteDAO interface {
 	// List returns the user's favorites with each item's current catalog state.
 	List(userID int64) ([]FavoriteItem, error)
 
+	// Summary returns the user's favorite count and how many of those items are
+	// currently unavailable in the catalog. One aggregate statement, so the two
+	// counts are read from the same snapshot (REQ-003, REQ-004, REQ-009).
+	Summary(userID int64) (FavoriteSummary, error)
+
 	// ListForExport returns the user's favorites with the seven values the CSV
 	// writes, in the same order as List, so the file matches GET /favorites
 	// (REQ-003, REQ-019). It is a separate method rather than an overload of
@@ -198,6 +203,28 @@ func (d *favoriteDAO) List(userID int64) ([]FavoriteItem, error) {
 	}
 
 	return favorites, nil
+}
+
+func (d *favoriteDAO) Summary(userID int64) (FavoriteSummary, error) {
+	// LEFT JOIN + COALESCE, matching List: a favorite whose catalog row is
+	// missing counts as discontinued rather than dropping out of the total.
+	// One statement keeps total and discontinued on the same snapshot, so
+	// discontinued can never exceed total (REQ-009).
+	var summary FavoriteSummary
+	err := d.db.QueryRowContext(context.Background(),
+		`SELECT COUNT(*) AS total,
+		        COUNT(*) FILTER (WHERE NOT COALESCE(c.is_available, FALSE)) AS discontinued
+		   FROM favorite_items f
+		   LEFT JOIN catalog_items c ON c.id = f.item_id
+		  WHERE f.user_id = $1`,
+		userID,
+	).Scan(&summary.Total, &summary.Discontinued)
+	if err != nil {
+		log.Error().Err(err).Caller().Msg("error when query favorites summary")
+		return FavoriteSummary{}, err
+	}
+
+	return summary, nil
 }
 
 func (d *favoriteDAO) ListForExport(userID int64) ([]FavoriteExportItem, error) {
