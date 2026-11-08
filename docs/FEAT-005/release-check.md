@@ -189,6 +189,19 @@ port `8080`, Postgres and Redis wired by service name.
 | Breaking changes vs docs base branch | No prior `openapi.yaml` for this service exists in the docs repo (`find` returned none), so this is the first published contract; `architecture.md:569` records no planned breaking changes | PASS (no baseline) |
 | `TestOpenAPISpecMatchesRegisteredRoutes` | CI suite asserts the shipped spec matches the registered routes | PASS |
 
+## API contract publication (docs repo)
+
+| Check | Evidence | Status |
+|---|---|---|
+| Docs base branch | `$NEXAI_DOCS_BASE_BRANCH` = `main`; docs repo `main` = `7a6aea80` fetched | PASS |
+| Publication branch | `feat/sandbox-svc/FEAT-005/api-contract-favorites-summary` (`a8206f8af8f031fc9ae597154c8f849a6452ad12`) | PUSHED |
+| Docs PR | https://github.com/william22913/sandbox-docs/pull/26 — base `main`, `state: open`, `merged: false` | OPEN |
+| `openapi.yaml` published | `sandbox-svc/feature/FEAT-005/api/openapi.yaml` — SHA-256 `c4bf73b05c8478c4fd476e6ad34667b10b88b80ba11379c55961cfe9ce0b14e8` (identical to code source) | PASS |
+| Postman collection published | `sandbox-svc/feature/FEAT-005/api/postman/collection.json` — SHA-256 `57cf8c2b288acab3bd0993ca62e176ed839624ea63d38969d4a2685a1fb6e874` (identical to code source) | PASS |
+| Postman environment published | `sandbox-svc/feature/FEAT-005/api/postman/environment.local.json` — SHA-256 `c441473859c891987e003912e0c93c52fe5c09b796c54bd0b10d108a2d69f32b`; `baseUrl` = `http://localhost:18080` | PASS |
+| Base URL | `sandbox-svc/feature/FEAT-005/api/base-url.json` — `base_url` = `http://localhost:18080`, source `user`, `local_only: true`; matches compose published port `docker-compose.yml:44` | PASS |
+| Merge order | Docs PR body requires the code release PR to merge first | PASS |
+
 ## Open issues
 
 None blocking.
