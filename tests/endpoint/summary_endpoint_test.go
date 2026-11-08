@@ -127,14 +127,18 @@ func TestSummaryHandler_TC009_TC010_RejectsUnauthenticated(t *testing.T) {
 				t.Error("payload.message is empty")
 			}
 
-			var raw map[string]interface{}
+			// The envelope is {success, header, payload}: counts, had any leaked
+			// through, would sit inside payload next to status/code/message.
+			var raw struct {
+				Payload map[string]interface{} `json:"payload"`
+			}
 			if err := json.Unmarshal(rec.Body.Bytes(), &raw); err != nil {
 				t.Fatalf("decoding raw envelope: %v", err)
 			}
-			if _, ok := raw["total"]; ok {
+			if _, ok := raw.Payload["total"]; ok {
 				t.Error("401 body carries a total field")
 			}
-			if _, ok := raw["discontinued"]; ok {
+			if _, ok := raw.Payload["discontinued"]; ok {
 				t.Error("401 body carries a discontinued field")
 			}
 		})
@@ -244,11 +248,16 @@ func fakeRedis(t *testing.T, token, payload string) *redis.Client {
 		}
 	}()
 
-	return redis.NewClient(&redis.Options{
+	client := redis.NewClient(&redis.Options{
 		Addr:       ln.Addr().String(),
 		PoolSize:   1,
 		MaxRetries: -1,
 	})
+	// NewClient starts the pool's idle reaper; only Close stops it. Cleanups
+	// run LIFO, so this fires before the listener is closed above.
+	t.Cleanup(func() { _ = client.Close() })
+
+	return client
 }
 
 // readRESPGet parses exactly `*2\r\n$3\r\nGET\r\n$N\r\n<key>\r\n`.
@@ -456,14 +465,17 @@ func TestSummary_TC015_InternalFailureRenders500Envelope(t *testing.T) {
 		t.Errorf("payload = %+v, want a non-empty code and message", env.Payload)
 	}
 
-	var raw map[string]interface{}
+	// Counts would ride inside payload, next to status/code/message.
+	var raw struct {
+		Payload map[string]interface{} `json:"payload"`
+	}
 	if err := json.Unmarshal(rec.Body.Bytes(), &raw); err != nil {
 		t.Fatalf("decoding raw envelope: %v", err)
 	}
-	if _, ok := raw["total"]; ok {
+	if _, ok := raw.Payload["total"]; ok {
 		t.Error("500 body carries a total field")
 	}
-	if _, ok := raw["discontinued"]; ok {
+	if _, ok := raw.Payload["discontinued"]; ok {
 		t.Error("500 body carries a discontinued field")
 	}
 }
