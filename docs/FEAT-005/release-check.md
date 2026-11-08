@@ -17,7 +17,9 @@
 | Postman collection source | `postman/collection.json` — SHA-256 `57cf8c2b288acab3bd0993ca62e176ed839624ea63d38969d4a2685a1fb6e874` |
 | Postman local environment source | `postman/environment.local.json` — SHA-256 `c441473859c891987e003912e0c93c52fe5c09b796c54bd0b10d108a2d69f32b` |
 | Code release CI | https://github.com/william22913/sandbox-svc-code/actions/runs/42457539537 — `success` |
-| Release PR | pending |
+| Release PR | https://github.com/william22913/sandbox-svc-code/pull/4 |
+
+Release PR: https://github.com/william22913/sandbox-svc-code/pull/4
 
 ## Input verification
 
