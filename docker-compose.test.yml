@@ -1,0 +1,33 @@
+# Verification-only: runs the Go toolchain the repo cannot run on the dev
+# machine (no Go installation there), so tests/ is compiled and executed rather
+# than assumed.
+#
+# Deliberately separate from docker-compose.verify.yml: the Go module cache wants
+# most of the runner's ~1.2 GB budget, and it is only needed for this check.
+#
+#   gofmt    — fails on any unformatted file
+#   go vet   — fails on anything suspicious
+#   go test  — ./tests/... ; tests/db prints SKIP because this container has no
+#              docker socket, which is the documented behaviour of testdb.Start
+#
+# The container stays alive after a green run (so `up --wait` sees a healthy
+# service); a failed run exits non-zero and no /tests.done is written, which the
+# runner reports as a failed up phase with the toolchain output in the logs.
+services:
+  gotest:
+    image: golang:1.27.2-alpine
+    mem_limit: 1024m
+    working_dir: /src
+    volumes:
+      - .:/src
+    environment:
+      GOFLAGS: -mod=vendor
+      GOCACHE: /tmp/go-cache
+      GOMAXPROCS: "2"
+    command: ["sh", "/src/tests/live/run-go-tests.sh"]
+    healthcheck:
+      test: ["CMD-SHELL", "test -f /tests.done"]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+      start_period: 10s

@@ -1,0 +1,9 @@
+{
+  "ITEM_ID": "Item ID",
+  "FAVORITE": "Favorite",
+
+  "NEED_MORE_THAN": "Number of data must bigger than",
+  "NEED_LESS_THAN": "Number of data must less than",
+  "EQUAL": "Number of data must equal",
+  "FIXED_VALUE": "Fixed Value"
+}

@@ -1,0 +1,14 @@
+# vendor/ is deliberately NOT excluded. nexcommon is a private module, so the
+# image build cannot fetch it — the Dockerfile copies vendor/ and builds with
+# -mod=vendor. Excluding it here would break the build, not just shrink it.
+
+.git/
+.gitignore
+
+# Runtime state and local env, never baked into an image.
+*.env
+.env
+sample.env
+
+# Feature docs are read by humans, not by the running service.
+docs/
