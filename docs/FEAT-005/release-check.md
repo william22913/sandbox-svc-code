@@ -182,7 +182,7 @@ port `8080`, Postgres and Redis wired by service name.
 | Migrations plan/order/rollback | `docs/FEAT-005/database.md:95` — zero batches; `sql_migrations/main/1..3` unchanged, no rollback needed | PASS |
 | Env/config | `docker-compose.yml:39` (`SANDBOX_SVC_POSTGRESQL_HOST`/`SANDBOX_SVC_REDIS_HOST`); published `18080:8080` at `docker-compose.yml:44` | PASS |
 | Generated OpenAPI path | `api/openapi.yaml:126` (`/v1/favorites/summary`), schema at `api/openapi.yaml:394`, envelope at `api/openapi.yaml:456` | PASS |
-| Live API/Newman | `verify_stack` PASS (newman, 20s): 14 requests, 25 test-scripts, 64 assertions, 0 failed; `Summary — user 1` → 200 `{5,1}`, `Summary — user 3` → 200 `{0,0}`, anonymous/invalid → 401 | PASS |
+| Live API/Newman | `postman/collection.json:569` (`Summary — user 1`), `postman/collection.json:770` (`Summary — anonymous`); `verify_stack` PASS (newman, 20s): 14 requests, 25 test-scripts, 64 assertions, 0 failed — user 1 → 200 `{5,1}`, user 3 → 200 `{0,0}`, anonymous/invalid → 401 | PASS |
 | Contract drift vs `architecture.md` `## Backend — Endpoints` | `architecture.md:402` declares one route, `GET /v1/favorites/summary`, consumer `fe` — matches `api/openapi.yaml:126` exactly (path, method, `payload.total`/`payload.discontinued` integers, 200/401/500). No other endpoint row exists | PASS |
 | Breaking changes vs docs base branch | No prior `openapi.yaml` for this service exists in the docs repo (`find` returned none), so this is the first published contract; `architecture.md:569` records no planned breaking changes | PASS (no baseline) |
 | `TestOpenAPISpecMatchesRegisteredRoutes` | CI suite asserts the shipped spec matches the registered routes | PASS |
