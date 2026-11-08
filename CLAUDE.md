@@ -23,4 +23,7 @@ Greenfield as of the first feature (FEAT-001): no source tree existed before it.
   (favorite/un-favorite, My Favorites list, 500-per-user cap, row-ownership 404).
 - [FEAT-003](docs/FEAT-003/spec.md) — Export the calling user's own favorites as
   a CSV download (`GET /v1/favorites/export`, RFC 4180, read-only).
+- [FEAT-005](docs/FEAT-005/spec.md) — Favorites summary and badge tooltip:
+  per-user total and discontinued favorite counts from
+  `GET /v1/favorites/summary`, surfaced as a hover tooltip on the FEAT-004 badge.
 - [ERD](docs/ERD.md) — cumulative entity-relationship diagram for this service.
